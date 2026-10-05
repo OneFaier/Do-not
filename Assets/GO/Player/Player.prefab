@@ -241,8 +241,10 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 64
   maxReachDistance: 10
-  pullSpeed: -6
-  hangDistance: 1.2
+  pullSpeed: 6
+  minRopeLength: 0.5
+  swingForce: 7
+  vaultForce: 8
   leftHandIdleOffset: {x: -0.4, y: -0.3, z: 0.8}
   rightHandIdleOffset: {x: 0.4, y: -0.3, z: 0.8}
 --- !u!114 &4395805619860072332
@@ -301,7 +303,7 @@ CapsuleCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7095123624243484595}
-  m_Material: {fileID: 0}
+  m_Material: {fileID: 13400000, guid: b028adbeffc9ffd42a02e51574735ced, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0

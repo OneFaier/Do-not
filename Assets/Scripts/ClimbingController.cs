@@ -10,16 +10,15 @@ public class ClimbingController : MonoBehaviour
     [SerializeField] private LayerMask climbableLayer;
 
     [Header("Réglages Escalade")]
-    [SerializeField] private float maxReachDistance = 10f;
-    [SerializeField] private float pullSpeed = 6f;
-    [SerializeField] private float hangDistance = 1.2f;
+    [SerializeField] private float maxReachDistance = 15f;
+    [SerializeField] private float pullSpeed = 8f; // Vitesse de hissage
+    [SerializeField] private float minRopeLength = 0.5f; // Distance minimale entre le corps et la main
 
-    [Header("Mouvement en l'air (Balance & Hissage)")]
-    [SerializeField] private float swingForce = 15f; // Force de balancier (gauche/droite/avant/arrière)
-    [SerializeField] private float heaveForce = 10f; // Force pour se hisser vers le haut (saut/espace)
-    [SerializeField] private float maxSwingVelocity = 8f; // Limite la vitesse de balancement
+    [Header("Mouvement en l'air")]
+    [SerializeField] private float swingForce = 25f; // Force de balancier ZQSD
+    [SerializeField] private float vaultForce = 8f; // Puissance de l'éjection au-dessus du mur
 
-    [Header("Positions au repos (relatives à la caméra)")]
+    [Header("Positions au repos")]
     [SerializeField] private Vector3 leftHandIdleOffset = new Vector3(-0.4f, -0.3f, 0.8f);
     [SerializeField] private Vector3 rightHandIdleOffset = new Vector3(0.4f, -0.3f, 0.8f);
 
@@ -28,9 +27,13 @@ public class ClimbingController : MonoBehaviour
     private Vector3 leftGrabPoint;
     private Vector3 rightGrabPoint;
 
+    // La longueur actuelle de ton bras/corde
+    private float currentRopeLength;
+
     private void Start()
     {
         if (!mainCamera) mainCamera = Camera.main;
+        if (!playerRb) playerRb = GetComponent<Rigidbody>();
     }
 
     private void Update()
@@ -48,6 +51,7 @@ public class ClimbingController : MonoBehaviour
 
     private void HandleGrabInput(int mouseButton, ref bool isGripping, ref Vector3 grabPoint)
     {
+        // QUAND ON S'ACCROCHE
         if (Input.GetMouseButtonDown(mouseButton))
         {
             Ray ray = mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
@@ -55,14 +59,35 @@ public class ClimbingController : MonoBehaviour
             {
                 isGripping = true;
                 grabPoint = hit.point;
-                // Optionnel : Réinitialiser un peu la vélocité à l'accroche pour éviter un effet "élastique" trop violent
-                playerRb.linearVelocity *= 0.5f;
+
+                float distToPoint = Vector3.Distance(transform.position, grabPoint);
+
+                // Si on tenait déjà avec l'autre main, on fait une moyenne
+                if ((mouseButton == 0 && isRightGripping) || (mouseButton == 1 && isLeftGripping))
+                    currentRopeLength = (currentRopeLength + distToPoint) / 2f;
+                else
+                    currentRopeLength = distToPoint;
+
+                // On adoucit la vitesse pour encaisser le choc de l'accroche
+                playerRb.linearVelocity *= 0.3f;
             }
         }
 
+        // QUAND ON LÂCHE LA PRISE
         if (Input.GetMouseButtonUp(mouseButton))
         {
             isGripping = false;
+
+            // Si on lâche TOUTES les mains tout en se hissant (Espace), on s'éjecte par-dessus
+            if (!isLeftGripping && !isRightGripping && Input.GetButton("Jump"))
+            {
+                // Calcule une trajectoire vers le haut et un peu vers l'avant
+                Vector3 vaultDirection = (Vector3.up * 1.5f + mainCamera.transform.forward).normalized;
+
+                // Reset la vitesse pour éviter que le balancier n'abîme le saut
+                playerRb.linearVelocity = Vector3.zero;
+                playerRb.AddForce(vaultDirection * vaultForce, ForceMode.Impulse);
+            }
         }
     }
 
@@ -78,83 +103,70 @@ public class ClimbingController : MonoBehaviour
     private void HandleClimbingPhysics()
     {
         bool isClimbing = isLeftGripping || isRightGripping;
+
+        // On simule nous-même la gravité pendant la grimpe pour plus de contrôle
         playerRb.useGravity = !isClimbing;
 
         if (!isClimbing) return;
 
-        // 1. Force d'attraction vers la/les prise(s) (la base de ton script précédent)
-        Vector3 totalPull = Vector3.zero;
-        int activeGrips = 0;
         Vector3 centerOfGrip = Vector3.zero;
+        int activeGrips = 0;
 
-        if (isLeftGripping)
-        {
-            totalPull += CalculatePullDirection(leftGrabPoint);
-            centerOfGrip += leftGrabPoint;
-            activeGrips++;
-        }
+        if (isLeftGripping) { centerOfGrip += leftGrabPoint; activeGrips++; }
+        if (isRightGripping) { centerOfGrip += rightGrabPoint; activeGrips++; }
+        centerOfGrip /= activeGrips;
 
-        if (isRightGripping)
-        {
-            totalPull += CalculatePullDirection(rightGrabPoint);
-            centerOfGrip += rightGrabPoint;
-            activeGrips++;
-        }
+        float currentDist = Vector3.Distance(transform.position, centerOfGrip);
+        Vector3 dirToGrip = (centerOfGrip - transform.position).normalized;
 
-        Vector3 baseVelocity = Vector3.zero;
-        if (activeGrips > 0)
-        {
-            baseVelocity = (totalPull / activeGrips) * pullSpeed;
-            centerOfGrip /= activeGrips;
-        }
+        Vector3 currentVel = playerRb.linearVelocity;
 
-        // 2. Ajout du balancement (Swing) et du hissage (Heave) commandé par le joueur
-        Vector3 playerInputVelocity = HandleMidAirMovement(centerOfGrip);
+        // 1. GRAVITÉ SIMULÉE (pour balancer naturellement)
+        currentVel += Physics.gravity * Time.fixedDeltaTime;
 
-        // On combine la force de traction naturelle vers la prise + le mouvement du joueur
-        Vector3 finalVelocity = baseVelocity + playerInputVelocity;
-
-        // On applique la vélocité, en s'assurant que le joueur ne parte pas à une vitesse infinie
-        playerRb.linearVelocity = Vector3.ClampMagnitude(finalVelocity, pullSpeed + maxSwingVelocity);
-    }
-
-    private Vector3 CalculatePullDirection(Vector3 grabPoint)
-    {
-        Vector3 targetPlayerPos = grabPoint - Vector3.up * hangDistance;
-        Vector3 direction = targetPlayerPos - transform.position;
-        return Vector3.ClampMagnitude(direction, 1f);
-    }
-
-    // Nouvelle fonction pour gérer les mouvements quand on est accroché
-    private Vector3 HandleMidAirMovement(Vector3 gripCenter)
-    {
-        Vector3 inputMovement = Vector3.zero;
-
-        // Récupérer les inputs ZQSD/WASD
-        float moveX = Input.GetAxis("Horizontal");
-        float moveZ = Input.GetAxis("Vertical");
-
-        // Calculer la direction du balancier par rapport à la caméra
-        // On annule la composante Y (haut/bas) de la caméra pour ne se balancer que sur le plan horizontal
-        Vector3 camForward = mainCamera.transform.forward;
-        camForward.y = 0;
-        camForward.Normalize();
-        Vector3 camRight = mainCamera.transform.right;
-        camRight.y = 0;
-        camRight.Normalize();
-
-        Vector3 swingDirection = (camRight * moveX + camForward * moveZ).normalized;
-        inputMovement += swingDirection * swingForce;
-
-        // Se hisser / S'éjecter vers le haut (Touche Saut/Espace)
+        // 2. SE HISSER (Raccourcir la corde)
         if (Input.GetButton("Jump"))
         {
-            // On ajoute une force vers le haut, mais aussi un peu vers l'avant (vers la prise)
-            // pour aider à passer par-dessus un rebord.
-            Vector3 heaveDir = Vector3.up + (gripCenter - transform.position).normalized * 0.5f;
-            inputMovement += heaveDir.normalized * heaveForce;
+            currentRopeLength -= pullSpeed * Time.fixedDeltaTime;
+
+            // Si on est déjà collé à la prise, on force le corps à MONTER le long du mur
+            // C'est ce qui te permet de dépasser ta main sans rester coincé en dessous !
+            if (currentDist <= minRopeLength + 0.5f)
+            {
+                currentVel.y += pullSpeed * 2f * Time.fixedDeltaTime;
+            }
+        }
+        currentRopeLength = Mathf.Max(currentRopeLength, minRopeLength);
+
+        // 3. EFFET DE CORDE TENDUE (Tether)
+        if (currentDist > currentRopeLength)
+        {
+            // On tire le joueur vers la prise s'il dépasse la longueur de sa corde
+            float stretch = currentDist - currentRopeLength;
+            currentVel += dirToGrip * (stretch * 50f * Time.fixedDeltaTime);
+
+            // On annule la vitesse qui nous éloignerait davantage de la prise
+            float outwardSpeed = Vector3.Dot(currentVel, -dirToGrip);
+            if (outwardSpeed > 0)
+            {
+                currentVel += dirToGrip * outwardSpeed;
+            }
         }
 
-        return inputMovement;
+        // 4. BALANCEMENT (WASD / ZQSD)
+        Vector3 camForward = mainCamera.transform.forward; camForward.y = 0; camForward.Normalize();
+        Vector3 camRight = mainCamera.transform.right; camRight.y = 0; camRight.Normalize();
+
+        float moveX = Input.GetAxis("Horizontal");
+        float moveZ = Input.GetAxis("Vertical");
+        Vector3 swingDir = (camRight * moveX + camForward * moveZ).normalized;
+
+        currentVel += swingDir * (swingForce * Time.fixedDeltaTime);
+
+        // Léger frein global pour éviter de partir dans tous les sens à l'infini
+        currentVel *= 0.98f;
+
+        // On applique les forces au joueur
+        playerRb.linearVelocity = currentVel;
     }
 }
