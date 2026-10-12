@@ -13,6 +13,7 @@ public class ClimbingController : MonoBehaviour
     [SerializeField] private float maxReachDistance = 15f;
     [SerializeField] private float pullSpeed = 8f; // Vitesse de hissage
     [SerializeField] private float minRopeLength = 0.5f; // Distance minimale entre le corps et la main
+    [SerializeField] private float maxRopeLength = 10f; // Distance maximale entre le corps et le point d'accroche
 
     [Header("Mouvement en l'air")]
     [SerializeField] private float swingForce = 25f; // Force de balancier ZQSD
@@ -67,6 +68,8 @@ public class ClimbingController : MonoBehaviour
                     currentRopeLength = (currentRopeLength + distToPoint) / 2f;
                 else
                     currentRopeLength = distToPoint;
+
+                currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
 
                 // On adoucit la vitesse pour encaisser le choc de l'accroche
                 playerRb.linearVelocity *= 0.3f;
@@ -136,7 +139,7 @@ public class ClimbingController : MonoBehaviour
                 currentVel.y += pullSpeed * 2f * Time.fixedDeltaTime;
             }
         }
-        currentRopeLength = Mathf.Max(currentRopeLength, minRopeLength);
+        currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
 
         // 3. EFFET DE CORDE TENDUE (Tether)
         if (currentDist > currentRopeLength)
