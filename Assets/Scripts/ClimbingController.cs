@@ -11,13 +11,15 @@ public class ClimbingController : MonoBehaviour
 
     [Header("Réglages Escalade")]
     [SerializeField] private float maxReachDistance = 15f;
-    [SerializeField] private float pullSpeed = 8f; // Vitesse de hissage
-    [SerializeField] private float minRopeLength = 0.5f; // Distance minimale entre le corps et la main
-    [SerializeField] private float maxRopeLength = 10f; // Distance maximale entre le corps et le point d'accroche
+    [SerializeField] private float pullSpeed = 8f;
+    [SerializeField] private float minRopeLength = 0.5f;
+    [SerializeField] private float maxRopeLength = 10f;
+    [SerializeField] private float grabCooldown = 0.15f; // Anti-spam des clics
 
     [Header("Mouvement en l'air")]
-    [SerializeField] private float swingForce = 25f; // Force de balancier ZQSD
-    [SerializeField] private float vaultForce = 8f; // Puissance de l'éjection au-dessus du mur
+    [SerializeField] private float swingForce = 25f;
+    [SerializeField] private float vaultForce = 8f;
+    [SerializeField] private float maxClimbSpeed = 15f; // Limite de vitesse anti-vol
 
     [Header("Positions au repos")]
     [SerializeField] private Vector3 leftHandIdleOffset = new Vector3(-0.4f, -0.3f, 0.8f);
@@ -27,9 +29,8 @@ public class ClimbingController : MonoBehaviour
     private bool isRightGripping;
     private Vector3 leftGrabPoint;
     private Vector3 rightGrabPoint;
-
-    // La longueur actuelle de ton bras/corde
     private float currentRopeLength;
+    private float grabTimer = 0f; // Timer pour le cooldown
 
     private void Start()
     {
@@ -39,6 +40,9 @@ public class ClimbingController : MonoBehaviour
 
     private void Update()
     {
+        // Gestion du cooldown global pour éviter le spam de clics
+        if (grabTimer > 0f) grabTimer -= Time.deltaTime;
+
         HandleGrabInput(0, ref isLeftGripping, ref leftGrabPoint);
         HandleGrabInput(1, ref isRightGripping, ref rightGrabPoint);
 
@@ -50,10 +54,12 @@ public class ClimbingController : MonoBehaviour
         HandleClimbingPhysics();
     }
 
+    private void HandleGrabInput(int mouseButton, ref bool isGripping, ref bool otherGripping, ref Vector3 grabPoint) { } // Surcharge conceptuelle
+
     private void HandleGrabInput(int mouseButton, ref bool isGripping, ref Vector3 grabPoint)
     {
-        // QUAND ON S'ACCROCHE
-        if (Input.GetMouseButtonDown(mouseButton))
+        // QUAND ON S'ACCROCHE (Sécurisé par le cooldown)
+        if (Input.GetMouseButtonDown(mouseButton) && grabTimer <= 0f)
         {
             Ray ray = mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             if (Physics.Raycast(ray, out RaycastHit hit, maxReachDistance, climbableLayer))
@@ -63,7 +69,6 @@ public class ClimbingController : MonoBehaviour
 
                 float distToPoint = Vector3.Distance(transform.position, grabPoint);
 
-                // Si on tenait déjà avec l'autre main, on fait une moyenne
                 if ((mouseButton == 0 && isRightGripping) || (mouseButton == 1 && isLeftGripping))
                     currentRopeLength = (currentRopeLength + distToPoint) / 2f;
                 else
@@ -71,23 +76,21 @@ public class ClimbingController : MonoBehaviour
 
                 currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
 
-                // On adoucit la vitesse pour encaisser le choc de l'accroche
                 playerRb.linearVelocity *= 0.3f;
+                grabTimer = grabCooldown; // Active le délai anti-spam
             }
         }
 
         // QUAND ON LÂCHE LA PRISE
         if (Input.GetMouseButtonUp(mouseButton))
         {
+            // On vérifiait si les DEUX mains allaient lâcher
+            bool wasClimbing = isLeftGripping || isRightGripping;
             isGripping = false;
 
-            // Si on lâche TOUTES les mains tout en se hissant (Espace), on s'éjecte par-dessus
-            if (!isLeftGripping && !isRightGripping && Input.GetButton("Jump"))
+            if (wasClimbing && !isLeftGripping && !isRightGripping && Input.GetButton("Jump"))
             {
-                // Calcule une trajectoire vers le haut et un peu vers l'avant
                 Vector3 vaultDirection = (Vector3.up * 1.5f + mainCamera.transform.forward).normalized;
-
-                // Reset la vitesse pour éviter que le balancier n'abîme le saut
                 playerRb.linearVelocity = Vector3.zero;
                 playerRb.AddForce(vaultDirection * vaultForce, ForceMode.Impulse);
             }
@@ -107,7 +110,6 @@ public class ClimbingController : MonoBehaviour
     {
         bool isClimbing = isLeftGripping || isRightGripping;
 
-        // On simule nous-même la gravité pendant la grimpe pour plus de contrôle
         playerRb.useGravity = !isClimbing;
 
         if (!isClimbing) return;
@@ -124,16 +126,14 @@ public class ClimbingController : MonoBehaviour
 
         Vector3 currentVel = playerRb.linearVelocity;
 
-        // 1. GRAVITÉ SIMULÉE (pour balancer naturellement)
+        // 1. Gravité simulée
         currentVel += Physics.gravity * Time.fixedDeltaTime;
 
-        // 2. SE HISSER (Raccourcir la corde)
+        // 2. Se hisser
         if (Input.GetButton("Jump"))
         {
             currentRopeLength -= pullSpeed * Time.fixedDeltaTime;
 
-            // Si on est déjà collé à la prise, on force le corps à MONTER le long du mur
-            // C'est ce qui te permet de dépasser ta main sans rester coincé en dessous !
             if (currentDist <= minRopeLength + 0.5f)
             {
                 currentVel.y += pullSpeed * 2f * Time.fixedDeltaTime;
@@ -141,14 +141,12 @@ public class ClimbingController : MonoBehaviour
         }
         currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
 
-        // 3. EFFET DE CORDE TENDUE (Tether)
+        // 3. Effet de corde tendue
         if (currentDist > currentRopeLength)
         {
-            // On tire le joueur vers la prise s'il dépasse la longueur de sa corde
             float stretch = currentDist - currentRopeLength;
             currentVel += dirToGrip * (stretch * 50f * Time.fixedDeltaTime);
 
-            // On annule la vitesse qui nous éloignerait davantage de la prise
             float outwardSpeed = Vector3.Dot(currentVel, -dirToGrip);
             if (outwardSpeed > 0)
             {
@@ -156,7 +154,7 @@ public class ClimbingController : MonoBehaviour
             }
         }
 
-        // 4. BALANCEMENT (WASD / ZQSD)
+        // 4. Balancement
         Vector3 camForward = mainCamera.transform.forward; camForward.y = 0; camForward.Normalize();
         Vector3 camRight = mainCamera.transform.right; camRight.y = 0; camRight.Normalize();
 
@@ -166,10 +164,11 @@ public class ClimbingController : MonoBehaviour
 
         currentVel += swingDir * (swingForce * Time.fixedDeltaTime);
 
-        // Léger frein global pour éviter de partir dans tous les sens à l'infini
         currentVel *= 0.98f;
 
-        // On applique les forces au joueur
+        // SÉCURITÉ ANTI-VOL : On bride la vélocité maximale autorisée pendant l'escalade
+        currentVel = Vector3.ClampMagnitude(currentVel, maxClimbSpeed);
+
         playerRb.linearVelocity = currentVel;
     }
 }
