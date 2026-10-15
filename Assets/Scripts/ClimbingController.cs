@@ -9,12 +9,25 @@ public class ClimbingController : MonoBehaviour
     [SerializeField] private Camera mainCamera;
     [SerializeField] private LayerMask climbableLayer;
 
+    [Header("Visuels mains")]
+    [SerializeField] private Renderer leftHandRenderer;
+    [SerializeField] private Renderer rightHandRenderer;
+    [SerializeField] private Material handCooldownMaterial;
+    private Material leftHandOriginalMaterial;
+    private Material rightHandOriginalMaterial;
+
     [Header("Réglages Escalade")]
     [SerializeField] private float maxReachDistance = 15f;
     [SerializeField] private float pullSpeed = 8f;
     [SerializeField] private float minRopeLength = 0.5f;
     [SerializeField] private float maxRopeLength = 10f;
-    [SerializeField] private float grabCooldown = 0.15f; // Anti-spam des clics
+    [SerializeField] private float grabCooldown = 0.15f; // Anti-spam global des clics
+
+    [Header("Cooldowns mains")]
+    [SerializeField] private float leftHandCooldown = 0.4f;  // Cooldown propre à la main gauche
+    [SerializeField] private float rightHandCooldown = 0.4f; // Cooldown propre à la main droite
+    private float leftCooldownTimer = 0f;
+    private float rightCooldownTimer = 0f;
 
     [Header("Mouvement en l'air")]
     [SerializeField] private float swingForce = 25f;
@@ -30,23 +43,32 @@ public class ClimbingController : MonoBehaviour
     private Vector3 leftGrabPoint;
     private Vector3 rightGrabPoint;
     private float currentRopeLength;
-    private float grabTimer = 0f; // Timer pour le cooldown
+    private float grabTimer = 0f; // Timer pour le cooldown global
 
     private void Start()
     {
         if (!mainCamera) mainCamera = Camera.main;
         if (!playerRb) playerRb = GetComponent<Rigidbody>();
+
+        // Stockage des matériaux d'origine
+        if (leftHandRenderer) leftHandOriginalMaterial = leftHandRenderer.material;
+        if (rightHandRenderer) rightHandOriginalMaterial = rightHandRenderer.material;
     }
 
     private void Update()
     {
-        // Gestion du cooldown global pour éviter le spam de clics
+        // Gestion du cooldown global
         if (grabTimer > 0f) grabTimer -= Time.deltaTime;
+
+        // Gestion des cooldowns individuels des mains
+        if (leftCooldownTimer > 0f) leftCooldownTimer -= Time.deltaTime;
+        if (rightCooldownTimer > 0f) rightCooldownTimer -= Time.deltaTime;
 
         HandleGrabInput(0, ref isLeftGripping, ref leftGrabPoint);
         HandleGrabInput(1, ref isRightGripping, ref rightGrabPoint);
 
         UpdateHandPositions();
+        UpdateHandVisuals();
     }
 
     private void FixedUpdate()
@@ -54,12 +76,13 @@ public class ClimbingController : MonoBehaviour
         HandleClimbingPhysics();
     }
 
-    private void HandleGrabInput(int mouseButton, ref bool isGripping, ref bool otherGripping, ref Vector3 grabPoint) { } // Surcharge conceptuelle
-
     private void HandleGrabInput(int mouseButton, ref bool isGripping, ref Vector3 grabPoint)
     {
-        // QUAND ON S'ACCROCHE (Sécurisé par le cooldown)
-        if (Input.GetMouseButtonDown(mouseButton) && grabTimer <= 0f)
+        // Sélectionne le timer de cooldown correspondant à la main active
+        float specificCooldown = (mouseButton == 0) ? leftCooldownTimer : rightCooldownTimer;
+
+        // QUAND ON S'ACCROCHE (Sécurisé par le cooldown global et le cooldown de la main)
+        if (Input.GetMouseButtonDown(mouseButton) && grabTimer <= 0f && specificCooldown <= 0f)
         {
             Ray ray = mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             if (Physics.Raycast(ray, out RaycastHit hit, maxReachDistance, climbableLayer))
@@ -77,16 +100,19 @@ public class ClimbingController : MonoBehaviour
                 currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
 
                 playerRb.linearVelocity *= 0.3f;
-                grabTimer = grabCooldown; // Active le délai anti-spam
+                grabTimer = grabCooldown; // Active le délai anti-spam global
             }
         }
 
         // QUAND ON LÂCHE LA PRISE
-        if (Input.GetMouseButtonUp(mouseButton))
+        if (Input.GetMouseButtonUp(mouseButton) && isGripping)
         {
-            // On vérifiait si les DEUX mains allaient lâcher
             bool wasClimbing = isLeftGripping || isRightGripping;
             isGripping = false;
+
+            // Déclenche le cooldown spécifique à cette main avec sa valeur dédiée
+            if (mouseButton == 0) leftCooldownTimer = leftHandCooldown;
+            else if (mouseButton == 1) rightCooldownTimer = rightHandCooldown;
 
             if (wasClimbing && !isLeftGripping && !isRightGripping && Input.GetButton("Jump"))
             {
@@ -104,6 +130,19 @@ public class ClimbingController : MonoBehaviour
 
         leftHand.position = isLeftGripping ? leftGrabPoint : defaultLeft;
         rightHand.position = isRightGripping ? rightGrabPoint : defaultRight;
+    }
+
+    private void UpdateHandVisuals()
+    {
+        if (leftHandRenderer && handCooldownMaterial)
+        {
+            leftHandRenderer.material = (leftCooldownTimer > 0f) ? handCooldownMaterial : leftHandOriginalMaterial; //si le timer est >0f, alors mettre le material de cooldown, sinon mettre le material d'origine
+        }
+
+        if (rightHandRenderer && handCooldownMaterial)
+        {
+            rightHandRenderer.material = (rightCooldownTimer > 0f) ? handCooldownMaterial : rightHandOriginalMaterial;
+        }
     }
 
     private void HandleClimbingPhysics()

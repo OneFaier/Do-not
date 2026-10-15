@@ -240,11 +240,19 @@ MonoBehaviour:
   climbableLayer:
     serializedVersion: 2
     m_Bits: 64
+  leftHandRenderer: {fileID: 6367862978048195988}
+  rightHandRenderer: {fileID: 2510645446925578415}
+  handCooldownMaterial: {fileID: 2100000, guid: f2d1a5953b4f472498d192d0e104d219, type: 2}
   maxReachDistance: 10
   pullSpeed: 6
   minRopeLength: 0.5
+  maxRopeLength: 10
+  grabCooldown: 0.15
+  leftHandCooldown: 0.4
+  rightHandCooldown: 0.4
   swingForce: 7
   vaultForce: 8
+  maxClimbSpeed: 15
   leftHandIdleOffset: {x: -0.4, y: -0.3, z: 0.8}
   rightHandIdleOffset: {x: 0.4, y: -0.3, z: 0.8}
 --- !u!114 &4395805619860072332
@@ -263,10 +271,9 @@ MonoBehaviour:
   cameraTransform: {fileID: 5482071481093233847}
   moveSpeed: 5
   jumpForce: 5
-  groundLayer:
-    serializedVersion: 2
-    m_Bits: 128
   groundCheckDistance: 1.1
+  groundCheckRadius: 0.2
+  coyoteTime: 0.2
   mouseSensitivity: 2
   maxPitch: 85
 --- !u!54 &8061724874943820992
