@@ -42,6 +42,11 @@ public class ClimbingController : MonoBehaviour
     private bool isRightGripping;
     private Vector3 leftGrabPoint;
     private Vector3 rightGrabPoint;
+    
+    // Stockage des surfaces touchées par chaque main
+    private ClimbableSurface leftSurface;
+    private ClimbableSurface rightSurface;
+
     private float currentRopeLength;
     private float grabTimer = 0f; // Timer pour le cooldown global
 
@@ -64,8 +69,8 @@ public class ClimbingController : MonoBehaviour
         if (leftCooldownTimer > 0f) leftCooldownTimer -= Time.deltaTime;
         if (rightCooldownTimer > 0f) rightCooldownTimer -= Time.deltaTime;
 
-        HandleGrabInput(0, ref isLeftGripping, ref leftGrabPoint);
-        HandleGrabInput(1, ref isRightGripping, ref rightGrabPoint);
+        HandleGrabInput(0, ref isLeftGripping, ref leftGrabPoint, ref leftSurface);
+        HandleGrabInput(1, ref isRightGripping, ref rightGrabPoint, ref rightSurface);
 
         UpdateHandPositions();
         UpdateHandVisuals();
@@ -76,31 +81,39 @@ public class ClimbingController : MonoBehaviour
         HandleClimbingPhysics();
     }
 
-    private void HandleGrabInput(int mouseButton, ref bool isGripping, ref Vector3 grabPoint)
+    private void HandleGrabInput(int mouseButton, ref bool isGripping, ref Vector3 grabPoint, ref ClimbableSurface handSurface)
     {
         // Sélectionne le timer de cooldown correspondant à la main active
         float specificCooldown = (mouseButton == 0) ? leftCooldownTimer : rightCooldownTimer;
 
-        // QUAND ON S'ACCROCHE (Sécurisé par le cooldown global et le cooldown de la main)
+        // QUAND ON S'ACCROCHE (Sécurisé par le layer, le cooldown global et le cooldown de la main)
         if (Input.GetMouseButtonDown(mouseButton) && grabTimer <= 0f && specificCooldown <= 0f)
         {
             Ray ray = mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             if (Physics.Raycast(ray, out RaycastHit hit, maxReachDistance, climbableLayer))
             {
-                isGripping = true;
-                grabPoint = hit.point;
+                // Vérifie si l'objet touché possède un composant de surface spécifique
+                ClimbableSurface surface = hit.collider.GetComponent<ClimbableSurface>();
 
-                float distToPoint = Vector3.Distance(transform.position, grabPoint);
+                // Si pas de composant, autorisé par défaut. Si présent, on vérifie si l'escalade y est autorisée.
+                if (surface == null || surface.SurfaceType.canClimb)
+                {
+                    isGripping = true;
+                    grabPoint = hit.point;
+                    handSurface = surface; // Mémorise la surface pour cette main
 
-                if ((mouseButton == 0 && isRightGripping) || (mouseButton == 1 && isLeftGripping))
-                    currentRopeLength = (currentRopeLength + distToPoint) / 2f;
-                else
-                    currentRopeLength = distToPoint;
+                    float distToPoint = Vector3.Distance(transform.position, grabPoint);
 
-                currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
+                    if ((mouseButton == 0 && isRightGripping) || (mouseButton == 1 && isLeftGripping))
+                        currentRopeLength = (currentRopeLength + distToPoint) / 2f;
+                    else
+                        currentRopeLength = distToPoint;
 
-                playerRb.linearVelocity *= 0.3f;
-                grabTimer = grabCooldown; // Active le délai anti-spam global
+                    currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
+
+                    playerRb.linearVelocity *= 0.3f;
+                    grabTimer = grabCooldown; // Active le délai anti-spam global
+                }
             }
         }
 
@@ -109,6 +122,7 @@ public class ClimbingController : MonoBehaviour
         {
             bool wasClimbing = isLeftGripping || isRightGripping;
             isGripping = false;
+            handSurface = null; // Oublie la surface
 
             // Déclenche le cooldown spécifique à cette main avec sa valeur dédiée
             if (mouseButton == 0) leftCooldownTimer = leftHandCooldown;
@@ -136,7 +150,7 @@ public class ClimbingController : MonoBehaviour
     {
         if (leftHandRenderer && handCooldownMaterial)
         {
-            leftHandRenderer.material = (leftCooldownTimer > 0f) ? handCooldownMaterial : leftHandOriginalMaterial; //si le timer est >0f, alors mettre le material de cooldown, sinon mettre le material d'origine
+            leftHandRenderer.material = (leftCooldownTimer > 0f) ? handCooldownMaterial : leftHandOriginalMaterial;
         }
 
         if (rightHandRenderer && handCooldownMaterial)
@@ -153,6 +167,21 @@ public class ClimbingController : MonoBehaviour
 
         if (!isClimbing) return;
 
+        // Calcul du multiplicateur de surface en fonction des mains actives
+        float gripMultiplier = 1f;
+        int activeSurfacesCount = 0;
+        if (isLeftGripping && leftSurface != null && leftSurface.SurfaceType != null)
+        {
+            gripMultiplier += leftSurface.SurfaceType.gripMultiplier;
+            activeSurfacesCount++;
+        }
+        if (isRightGripping && rightSurface != null && rightSurface.SurfaceType != null)
+        {
+            gripMultiplier += rightSurface.SurfaceType.gripMultiplier;
+            activeSurfacesCount++;
+        }
+        if (activeSurfacesCount > 0) gripMultiplier /= activeSurfacesCount;
+
         Vector3 centerOfGrip = Vector3.zero;
         int activeGrips = 0;
 
@@ -168,10 +197,10 @@ public class ClimbingController : MonoBehaviour
         // 1. Gravité simulée
         currentVel += Physics.gravity * Time.fixedDeltaTime;
 
-        // 2. Se hisser
+        // 2. Se hisser (influencé par la surface)
         if (Input.GetButton("Jump"))
         {
-            currentRopeLength -= pullSpeed * Time.fixedDeltaTime;
+            currentRopeLength -= (pullSpeed * gripMultiplier) * Time.fixedDeltaTime;
 
             if (currentDist <= minRopeLength + 0.5f)
             {
