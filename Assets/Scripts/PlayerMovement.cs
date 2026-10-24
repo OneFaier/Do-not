@@ -9,8 +9,11 @@ public class PlayerMovement : MonoBehaviour
     [Header("Déplacement Sol")]
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float jumpForce = 5f;
-    [SerializeField] private LayerMask groundLayer;
+    
+    [Header("Détection Sol")]
     [SerializeField] private float groundCheckDistance = 1.1f;
+    [SerializeField] private float groundCheckRadius = 0.2f;
+    [SerializeField] private float coyoteTime = 0.2f;
 
     [Header("Caméra")]
     [SerializeField] private float mouseSensitivity = 2f;
@@ -18,6 +21,7 @@ public class PlayerMovement : MonoBehaviour
 
     private float cameraPitch = 0f;
     private bool isGrounded;
+    private float coyoteTimeCounter;
 
     private void Start()
     {
@@ -33,7 +37,18 @@ public class PlayerMovement : MonoBehaviour
         HandleMouseLook();
         CheckGrounded();
 
-        if (isGrounded && Input.GetButtonDown("Jump") && rb.useGravity)
+        // Gestion du coyote time
+        if (isGrounded)
+        {
+            coyoteTimeCounter = coyoteTime;
+        }
+        else
+        {
+            coyoteTimeCounter -= Time.deltaTime;
+        }
+
+        // Dans la méthode Update() de PlayerMovement, assure-toi que le saut n'est autorisé que si la gravité est active :
+        if (coyoteTimeCounter > 0f && Input.GetButtonDown("Jump") && rb.useGravity)
         {
             Jump();
         }
@@ -63,8 +78,8 @@ public class PlayerMovement : MonoBehaviour
         // Si la gravité est désactivée (en train de grimper), on laisse le ClimbingController gérer la physique
         if (!rb.useGravity) return;
 
-        float moveX = Input.GetAxis("Horizontal");
-        float moveZ = Input.GetAxis("Vertical");
+        float moveX = Input.GetAxisRaw("Horizontal");
+        float moveZ = Input.GetAxisRaw("Vertical");
 
         Vector3 moveDirection = transform.right * moveX + transform.forward * moveZ;
         Vector3 targetVelocity = moveDirection.normalized * moveSpeed;
@@ -77,7 +92,8 @@ public class PlayerMovement : MonoBehaviour
 
     private void CheckGrounded()
     {
-        isGrounded = Physics.Raycast(transform.position, Vector3.down, groundCheckDistance, groundLayer);
+        // Raycast depuis la position du joueur vers le bas
+        isGrounded = Physics.SphereCast(transform.position, groundCheckRadius, Vector3.down, out RaycastHit hit, groundCheckDistance);
     }
 
     private void Jump()
