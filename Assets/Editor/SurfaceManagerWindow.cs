@@ -6,16 +6,28 @@ using System.IO;
 
 public class SurfaceManagerWindow : EditorWindow
 {
+    private Vector2 globalScrollPosition; // Barre de défilement globale (verticale et horizontale)
     private Vector2 scrollPosition;
     private List<SurfaceTypeSO> surfaceTypes = new List<SurfaceTypeSO>();
     private SurfaceTypeSO selectedSurface;
     private Editor cachedEditor;
     private string newSurfaceName = "Glace"; // Valeur par défaut
 
-    // Chemin par défaut basé sur ton arborescence (Assets/GO/Surfaces)
     private const string defaultSurfaceFolderPath = "Assets/GO/Surfaces";
+    
+    
+    private void OnInspectorUpdate() => Repaint();
 
-    [MenuItem("Tools/Climbing/Surface Manager")]
+    private void OnHierarchyChange()
+    {
+        Repaint();
+    }
+    private void OnSelectionChange()
+    {
+        Repaint();
+    }
+
+    [MenuItem("Tools/Surface Manager")]
     public static void ShowWindow()
     {
         GetWindow<SurfaceManagerWindow>("Gestionnaire de Surfaces");
@@ -43,6 +55,9 @@ public class SurfaceManagerWindow : EditorWindow
 
     private void OnGUI()
     {
+        // --- DÉBUT DU SCROLL GLOBAL (Gère le défilement vertical et horizontal de toute la fenêtre) ---
+        globalScrollPosition = EditorGUILayout.BeginScrollView(globalScrollPosition);
+
         EditorGUILayout.Space(10);
         GUILayout.Label("Gestionnaire des Types de Surfaces", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox("Crée et gère tes surfaces rapidement. Les fichiers sont automatiquement rangés et nommés sans fenêtres supplémentaires.", MessageType.Info);
@@ -76,7 +91,7 @@ public class SurfaceManagerWindow : EditorWindow
         EditorGUILayout.BeginHorizontal();
 
         // Colonne de gauche : Liste
-        EditorGUILayout.BeginVertical(GUILayout.Width(250));
+        EditorGUILayout.BeginVertical(GUILayout.Width(250), GUILayout.MinHeight(200));
         GUILayout.Label($"Surfaces existantes ({surfaceTypes.Count})", EditorStyles.boldLabel);
         
         scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, "box", GUILayout.ExpandHeight(true));
@@ -86,7 +101,6 @@ public class SurfaceManagerWindow : EditorWindow
 
             GUI.backgroundColor = (selectedSurface == surface) ? Color.cyan : Color.white;
             
-            // Affiche le nom propre de la surface dans le bouton
             string displayName = string.IsNullOrEmpty(surface.surfaceName) ? surface.name : surface.surfaceName;
             if (GUILayout.Button(displayName, "Button", GUILayout.Height(30)))
             {
@@ -99,7 +113,7 @@ public class SurfaceManagerWindow : EditorWindow
         EditorGUILayout.EndVertical();
 
         // Colonne de droite : Propriétés
-        EditorGUILayout.BeginVertical("box", GUILayout.ExpandHeight(true));
+        EditorGUILayout.BeginVertical("box", GUILayout.ExpandHeight(true)) ;
         GUILayout.Label("Propriétés de la surface sélectionnée", EditorStyles.boldLabel);
 
         if (selectedSurface != null)
@@ -127,27 +141,27 @@ public class SurfaceManagerWindow : EditorWindow
         EditorGUILayout.EndVertical();
 
         EditorGUILayout.EndHorizontal();
+
+        EditorGUILayout.Space(20); // Petit espace de fin pour le confort du scroll
+
+        // --- FIN DU SCROLL GLOBAL ---
+        EditorGUILayout.EndScrollView();
     }
 
     private void CreateNewSurface()
     {
         if (string.IsNullOrEmpty(newSurfaceName)) return;
 
-        // S'assure que le dossier de destination existe (le crée si besoin)
         EnsureFolderExists(defaultSurfaceFolderPath);
 
-        // Crée l'instance du ScriptableObject
         SurfaceTypeSO newSurface = ScriptableObject.CreateInstance<SurfaceTypeSO>();
         newSurface.surfaceName = newSurfaceName;
 
-        // Génère automatiquement un nom de fichier propre (ex: Surface_Glace.asset)
         string assetName = $"Surface_{newSurfaceName}.asset";
         string path = Path.Combine(defaultSurfaceFolderPath, assetName);
         
-        // Empêche l'écrasement s'il existe déjà un fichier du même nom en lui ajoutant un numéro auto
         path = AssetDatabase.GenerateUniqueAssetPath(path);
 
-        // Crée l'asset dans Unity
         AssetDatabase.CreateAsset(newSurface, path);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
@@ -161,7 +175,7 @@ public class SurfaceManagerWindow : EditorWindow
         if (AssetDatabase.IsValidFolder(path)) return;
 
         string[] folders = path.Split('/');
-        string currentPath = folders[0]; // "Assets"
+        string currentPath = folders[0];
 
         for (int i = 1; i < folders.Length; i++)
         {

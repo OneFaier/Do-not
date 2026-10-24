@@ -21,18 +21,18 @@ public class ClimbingController : MonoBehaviour
     [SerializeField] private float pullSpeed = 8f;
     [SerializeField] private float minRopeLength = 0.5f;
     [SerializeField] private float maxRopeLength = 10f;
-    [SerializeField] private float grabCooldown = 0.15f; // Anti-spam global des clics
+    [SerializeField] private float grabCooldown = 0.15f;
 
     [Header("Cooldowns mains")]
-    [SerializeField] private float leftHandCooldown = 0.4f;  // Cooldown propre à la main gauche
-    [SerializeField] private float rightHandCooldown = 0.4f; // Cooldown propre à la main droite
+    [SerializeField] private float leftHandCooldown = 0.4f;
+    [SerializeField] private float rightHandCooldown = 0.4f;
     private float leftCooldownTimer = 0f;
     private float rightCooldownTimer = 0f;
 
     [Header("Mouvement en l'air")]
     [SerializeField] private float swingForce = 25f;
     [SerializeField] private float vaultForce = 8f;
-    [SerializeField] private float maxClimbSpeed = 15f; // Limite de vitesse anti-vol
+    [SerializeField] private float maxClimbSpeed = 15f;
 
     [Header("Positions au repos")]
     [SerializeField] private Vector3 leftHandIdleOffset = new Vector3(-0.4f, -0.3f, 0.8f);
@@ -42,35 +42,39 @@ public class ClimbingController : MonoBehaviour
     private bool isRightGripping;
     private Vector3 leftGrabPoint;
     private Vector3 rightGrabPoint;
-    
-    // Stockage des surfaces touchées par chaque main
+
+    private Vector3 leftGrabNormal;
+    private Vector3 rightGrabNormal;
+
     private ClimbableSurface leftSurface;
     private ClimbableSurface rightSurface;
 
+    private Collider leftCollider;
+    private Collider rightCollider;
+
+    private float leftGrabDuration = 0f;
+    private float rightGrabDuration = 0f;
+
     private float currentRopeLength;
-    private float grabTimer = 0f; // Timer pour le cooldown global
+    private float grabTimer = 0f;
 
     private void Start()
     {
         if (!mainCamera) mainCamera = Camera.main;
         if (!playerRb) playerRb = GetComponent<Rigidbody>();
 
-        // Stockage des matériaux d'origine
         if (leftHandRenderer) leftHandOriginalMaterial = leftHandRenderer.material;
         if (rightHandRenderer) rightHandOriginalMaterial = rightHandRenderer.material;
     }
 
     private void Update()
     {
-        // Gestion du cooldown global
         if (grabTimer > 0f) grabTimer -= Time.deltaTime;
-
-        // Gestion des cooldowns individuels des mains
         if (leftCooldownTimer > 0f) leftCooldownTimer -= Time.deltaTime;
         if (rightCooldownTimer > 0f) rightCooldownTimer -= Time.deltaTime;
 
-        HandleGrabInput(0, ref isLeftGripping, ref leftGrabPoint, ref leftSurface);
-        HandleGrabInput(1, ref isRightGripping, ref rightGrabPoint, ref rightSurface);
+        HandleGrabInput(0, ref isLeftGripping, ref leftGrabPoint, ref leftGrabNormal, ref leftSurface, ref leftCollider, ref leftGrabDuration, leftHandCooldown);
+        HandleGrabInput(1, ref isRightGripping, ref rightGrabPoint, ref rightGrabNormal, ref rightSurface, ref rightCollider, ref rightGrabDuration, rightHandCooldown);
 
         UpdateHandPositions();
         UpdateHandVisuals();
@@ -81,26 +85,26 @@ public class ClimbingController : MonoBehaviour
         HandleClimbingPhysics();
     }
 
-    private void HandleGrabInput(int mouseButton, ref bool isGripping, ref Vector3 grabPoint, ref ClimbableSurface handSurface)
+    private void HandleGrabInput(int mouseButton, ref bool isGripping, ref Vector3 grabPoint, ref Vector3 grabNormal, ref ClimbableSurface handSurface, ref Collider handCollider, ref float grabDuration, float handCooldown)
     {
-        // Sélectionne le timer de cooldown correspondant à la main active
         float specificCooldown = (mouseButton == 0) ? leftCooldownTimer : rightCooldownTimer;
 
-        // QUAND ON S'ACCROCHE (Sécurisé par le layer, le cooldown global et le cooldown de la main)
+        // ACCROCHAGE
         if (Input.GetMouseButtonDown(mouseButton) && grabTimer <= 0f && specificCooldown <= 0f)
         {
             Ray ray = mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             if (Physics.Raycast(ray, out RaycastHit hit, maxReachDistance, climbableLayer))
             {
-                // Vérifie si l'objet touché possède un composant de surface spécifique
                 ClimbableSurface surface = hit.collider.GetComponent<ClimbableSurface>();
 
-                // Si pas de composant, autorisé par défaut. Si présent, on vérifie si l'escalade y est autorisée.
                 if (surface == null || surface.SurfaceType.canClimb)
                 {
                     isGripping = true;
                     grabPoint = hit.point;
-                    handSurface = surface; // Mémorise la surface pour cette main
+                    grabNormal = hit.normal;
+                    handSurface = surface;
+                    handCollider = hit.collider;
+                    grabDuration = 0f;
 
                     float distToPoint = Vector3.Distance(transform.position, grabPoint);
 
@@ -112,28 +116,88 @@ public class ClimbingController : MonoBehaviour
                     currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
 
                     playerRb.linearVelocity *= 0.3f;
-                    grabTimer = grabCooldown; // Active le délai anti-spam global
+                    grabTimer = grabCooldown;
                 }
             }
         }
 
-        // QUAND ON LÂCHE LA PRISE
+        // GESTION DU GLISSEMENT ET VERROUILLAGE AUX BORDS
+        if (isGripping)
+        {
+            grabDuration += Time.deltaTime;
+
+            if (handSurface != null && handSurface.SurfaceType != null)
+            {
+                SurfaceTypeSO type = handSurface.SurfaceType;
+
+                // 1. Glissement avec blocage strict aux limites de l'objet
+                if (type.isSlippery)
+                {
+                    Vector3 nextGrabPoint = grabPoint;
+
+                    if (grabNormal.y < -0.5f) // Plafond
+                    {
+                        Vector3 dirTowardsPlayer = (transform.position - grabPoint);
+                        dirTowardsPlayer.y = 0;
+                        dirTowardsPlayer.Normalize();
+                        if (dirTowardsPlayer == Vector3.zero) dirTowardsPlayer = transform.forward;
+
+                        nextGrabPoint += dirTowardsPlayer * type.slideSpeed * Time.deltaTime;
+                    }
+                    else // Mur vertical
+                    {
+                        nextGrabPoint += Vector3.down * type.slideSpeed * Time.deltaTime;
+                    }
+
+                    // SÉCURITÉ LIMITES : On vérifie si le prochain point est toujours sur le même collider exact
+                    if (handCollider != null)
+                    {
+                        Vector3 rayOrigin = nextGrabPoint + (grabNormal * 0.3f);
+                        if (Physics.Raycast(rayOrigin, -grabNormal, out RaycastHit slideHit, 0.6f, climbableLayer))
+                        {
+                            // Si on reste sur le même objet, on applique le mouvement de glissement
+                            if (slideHit.collider == handCollider)
+                            {
+                                grabPoint = slideHit.point;
+                                grabNormal = slideHit.normal;
+                            }
+                            // Sinon (on atteint le bord) : on ne fait rien, la main se bloque net au bord et s'arrête de glisser !
+                        }
+                        // Si le raycast rate (on sort du collider), on bloque la main sur place sans la faire décrocher
+                    }
+                }
+
+                // 2. Lâchage automatique si le temps max est atteint (si activé)
+                if (type.useMaxGrabTime && type.maxGrabTime > 0f && grabDuration >= type.maxGrabTime)
+                {
+                    ForceReleaseHand(mouseButton, ref isGripping, ref handSurface, ref handCollider, handCooldown);
+                    return;
+                }
+            }
+        }
+
+        // LÂCHAGE MANUEL
         if (Input.GetMouseButtonUp(mouseButton) && isGripping)
         {
-            bool wasClimbing = isLeftGripping || isRightGripping;
-            isGripping = false;
-            handSurface = null; // Oublie la surface
+            ForceReleaseHand(mouseButton, ref isGripping, ref handSurface, ref handCollider, handCooldown);
+        }
+    }
 
-            // Déclenche le cooldown spécifique à cette main avec sa valeur dédiée
-            if (mouseButton == 0) leftCooldownTimer = leftHandCooldown;
-            else if (mouseButton == 1) rightCooldownTimer = rightHandCooldown;
+    private void ForceReleaseHand(int mouseButton, ref bool isGripping, ref ClimbableSurface handSurface, ref Collider handCollider, float handCooldown)
+    {
+        bool wasClimbing = isLeftGripping || isRightGripping;
+        isGripping = false;
+        handSurface = null;
+        handCollider = null;
 
-            if (wasClimbing && !isLeftGripping && !isRightGripping && Input.GetButton("Jump"))
-            {
-                Vector3 vaultDirection = (Vector3.up * 1.5f + mainCamera.transform.forward).normalized;
-                playerRb.linearVelocity = Vector3.zero;
-                playerRb.AddForce(vaultDirection * vaultForce, ForceMode.Impulse);
-            }
+        if (mouseButton == 0) leftCooldownTimer = handCooldown;
+        else if (mouseButton == 1) rightCooldownTimer = handCooldown;
+
+        if (wasClimbing && !isLeftGripping && !isRightGripping && Input.GetButton("Jump"))
+        {
+            Vector3 vaultDirection = (Vector3.up * 1.5f + mainCamera.transform.forward).normalized;
+            playerRb.linearVelocity = Vector3.zero;
+            playerRb.AddForce(vaultDirection * vaultForce, ForceMode.Impulse);
         }
     }
 
@@ -167,7 +231,6 @@ public class ClimbingController : MonoBehaviour
 
         if (!isClimbing) return;
 
-        // Calcul du multiplicateur de surface en fonction des mains actives
         float gripMultiplier = 1f;
         int activeSurfacesCount = 0;
         if (isLeftGripping && leftSurface != null && leftSurface.SurfaceType != null)
@@ -194,10 +257,8 @@ public class ClimbingController : MonoBehaviour
 
         Vector3 currentVel = playerRb.linearVelocity;
 
-        // 1. Gravité simulée
         currentVel += Physics.gravity * Time.fixedDeltaTime;
 
-        // 2. Se hisser (influencé par la surface)
         if (Input.GetButton("Jump"))
         {
             currentRopeLength -= (pullSpeed * gripMultiplier) * Time.fixedDeltaTime;
@@ -209,7 +270,6 @@ public class ClimbingController : MonoBehaviour
         }
         currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
 
-        // 3. Effet de corde tendue
         if (currentDist > currentRopeLength)
         {
             float stretch = currentDist - currentRopeLength;
@@ -222,7 +282,6 @@ public class ClimbingController : MonoBehaviour
             }
         }
 
-        // 4. Balancement
         Vector3 camForward = mainCamera.transform.forward; camForward.y = 0; camForward.Normalize();
         Vector3 camRight = mainCamera.transform.right; camRight.y = 0; camRight.Normalize();
 
@@ -231,12 +290,9 @@ public class ClimbingController : MonoBehaviour
         Vector3 swingDir = (camRight * moveX + camForward * moveZ).normalized;
 
         currentVel += swingDir * (swingForce * Time.fixedDeltaTime);
-
         currentVel *= 0.98f;
 
-        // SÉCURITÉ ANTI-VOL : On bride la vélocité maximale autorisée pendant l'escalade
         currentVel = Vector3.ClampMagnitude(currentVel, maxClimbSpeed);
-
         playerRb.linearVelocity = currentVel;
     }
 }
