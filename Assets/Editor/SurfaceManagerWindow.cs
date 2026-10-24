@@ -6,28 +6,16 @@ using System.IO;
 
 public class SurfaceManagerWindow : EditorWindow
 {
-    private Vector2 globalScrollPosition; // Barre de défilement globale (verticale et horizontale)
+    private Vector2 globalScrollPosition;
     private Vector2 scrollPosition;
     private List<SurfaceTypeSO> surfaceTypes = new List<SurfaceTypeSO>();
     private SurfaceTypeSO selectedSurface;
     private Editor cachedEditor;
-    private string newSurfaceName = "Glace"; // Valeur par défaut
+    private string newSurfaceName = "Glace";
 
     private const string defaultSurfaceFolderPath = "Assets/GO/Surfaces";
-    
-    
-    private void OnInspectorUpdate() => Repaint();
 
-    private void OnHierarchyChange()
-    {
-        Repaint();
-    }
-    private void OnSelectionChange()
-    {
-        Repaint();
-    }
-
-    [MenuItem("Tools/Surface Manager")]
+    [MenuItem("Tools/Climbing/Surface Manager")]
     public static void ShowWindow()
     {
         GetWindow<SurfaceManagerWindow>("Gestionnaire de Surfaces");
@@ -55,12 +43,11 @@ public class SurfaceManagerWindow : EditorWindow
 
     private void OnGUI()
     {
-        // --- DÉBUT DU SCROLL GLOBAL (Gère le défilement vertical et horizontal de toute la fenêtre) ---
         globalScrollPosition = EditorGUILayout.BeginScrollView(globalScrollPosition);
 
         EditorGUILayout.Space(10);
         GUILayout.Label("Gestionnaire des Types de Surfaces", EditorStyles.boldLabel);
-        EditorGUILayout.HelpBox("Crée et gère tes surfaces rapidement. Les fichiers sont automatiquement rangés et nommés sans fenêtres supplémentaires.", MessageType.Info);
+        EditorGUILayout.HelpBox("Crée, gère et supprime tes surfaces rapidement depuis cet outil centralisé.", MessageType.Info);
 
         EditorGUILayout.Space(5);
 
@@ -112,8 +99,8 @@ public class SurfaceManagerWindow : EditorWindow
         EditorGUILayout.EndScrollView();
         EditorGUILayout.EndVertical();
 
-        // Colonne de droite : Propriétés
-        EditorGUILayout.BeginVertical("box", GUILayout.ExpandHeight(true)) ;
+        // Colonne de droite : Propriétés et Aperçu
+        EditorGUILayout.BeginVertical("box", GUILayout.ExpandHeight(true));
         GUILayout.Label("Propriétés de la surface sélectionnée", EditorStyles.boldLabel);
 
         if (selectedSurface != null)
@@ -126,25 +113,67 @@ public class SurfaceManagerWindow : EditorWindow
             EditorGUILayout.Space(5);
             cachedEditor.OnInspectorGUI();
 
+            // --- SECTION APERÇU DU MATÉRIAU ---
+            if (selectedSurface.surfaceMaterial != null)
+            {
+                EditorGUILayout.Space(10);
+                GUILayout.Label("Aperçu du Matériau", EditorStyles.boldLabel);
+
+                // Génère une texture d'aperçu de l'asset (matériau)
+                Texture2D previewTex = AssetPreview.GetAssetPreview(selectedSurface.surfaceMaterial);
+                if (previewTex != null)
+                {
+                    // Affiche l'aperçu dans un carré de 120x120 pixels centré
+                    GUILayout.BeginHorizontal();
+                    GUILayout.FlexibleSpace();
+                    GUILayout.Label(previewTex, GUILayout.Width(120), GUILayout.Height(120));
+                    GUILayout.FlexibleSpace();
+                    GUILayout.EndHorizontal();
+                }
+                else
+                {
+                    // Pendant que Unity génère l'aperçu en arrière-plan
+                    EditorGUILayout.HelpBox("Génération de l'aperçu en cours...", MessageType.Info);
+                    Repaint(); // Force l'UI à se rafraîchir pour afficher l'image dès qu'elle est prête
+                }
+            }
+            // -----------------------------------
+
             EditorGUILayout.Space(15);
+
             if (GUILayout.Button("Localiser dans le dossier Project"))
             {
                 Selection.activeObject = selectedSurface;
                 EditorGUIUtility.PingObject(selectedSurface);
             }
+
+            EditorGUILayout.Space(5);
+
+            // Bouton de suppression sécurisé
+            GUI.backgroundColor = new Color(1f, 0.4f, 0.4f);
+            if (GUILayout.Button("Supprimer cette surface", GUILayout.Height(30)))
+            {
+                if (EditorUtility.DisplayDialog(
+                    "Confirmer la suppression",
+                    $"Voulez-vous vraiment supprimer définitivement la surface '{selectedSurface.surfaceName}' ?",
+                    "Oui, supprimer",
+                    "Annuler"))
+                {
+                    DeleteSelectedSurface();
+                }
+            }
+            GUI.backgroundColor = Color.white;
         }
         else
         {
-            EditorGUILayout.HelpBox("Sélectionnez une surface à gauche pour modifier ses valeurs.", MessageType.Warning);
+            EditorGUILayout.HelpBox("Sélectionnez une surface à gauche pour modifier ses valeurs ou voir son aperçu.", MessageType.Warning);
         }
 
         EditorGUILayout.EndVertical();
 
         EditorGUILayout.EndHorizontal();
 
-        EditorGUILayout.Space(20); // Petit espace de fin pour le confort du scroll
-
-        // --- FIN DU SCROLL GLOBAL ---
+        EditorGUILayout.Space(20);
         EditorGUILayout.EndScrollView();
     }
 
@@ -168,6 +197,21 @@ public class SurfaceManagerWindow : EditorWindow
 
         LoadSurfaces();
         selectedSurface = newSurface;
+    }
+
+    private void DeleteSelectedSurface()
+    {
+        if (selectedSurface == null) return;
+
+        string path = AssetDatabase.GetAssetPath(selectedSurface);
+        
+        AssetDatabase.DeleteAsset(path);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        selectedSurface = null;
+        cachedEditor = null;
+        LoadSurfaces();
     }
 
     private void EnsureFolderExists(string path)

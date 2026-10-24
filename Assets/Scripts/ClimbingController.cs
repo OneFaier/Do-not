@@ -196,9 +196,13 @@ public class ClimbingController : MonoBehaviour
         if (wasClimbing && !isLeftGripping && !isRightGripping && Input.GetButton("Jump"))
         {
             Vector3 vaultDirection = (Vector3.up * 1.5f + mainCamera.transform.forward).normalized;
-            playerRb.linearVelocity = Vector3.zero;
+    
+            // La force s'additionne directement à ta vitesse actuelle (ton élan de balancier)
             playerRb.AddForce(vaultDirection * vaultForce, ForceMode.Impulse);
         }
+        
+        
+        
     }
 
     private void UpdateHandPositions()

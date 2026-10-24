@@ -17,6 +17,10 @@ public class SurfaceTypeSO : ScriptableObject
     [Header("Paramètres de Maintien Limité")]
     public bool useMaxGrabTime = false; 
     public float maxGrabTime = 1.5f;    // Temps max avant de lâcher de force si activé
+    
+    [Header("Paramètres de Rebond")]
+    public bool hasBounce = false;
+    public float bounceForce = 7f; // La puissance de l'impulsion de rebond
 
     [Header("Audio / Visuel (Optionnel)")]
     public AudioClip grabSound;

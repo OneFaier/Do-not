@@ -22,6 +22,7 @@ public class PlayerMovement : MonoBehaviour
     private float cameraPitch = 0f;
     private bool isGrounded;
     private float coyoteTimeCounter;
+    private float bounceTimer = 0f; // Empêche le sol d'interférer pendant un rebond
 
     private void Start()
     {
@@ -37,6 +38,9 @@ public class PlayerMovement : MonoBehaviour
         HandleMouseLook();
         CheckGrounded();
 
+        // Décompte du timer de rebond
+        if (bounceTimer > 0f) bounceTimer -= Time.deltaTime;
+
         // Gestion du coyote time
         if (isGrounded)
         {
@@ -47,7 +51,7 @@ public class PlayerMovement : MonoBehaviour
             coyoteTimeCounter -= Time.deltaTime;
         }
 
-        // Dans la méthode Update() de PlayerMovement, assure-toi que le saut n'est autorisé que si la gravité est active :
+        // Assure-toi que le saut n'est autorisé que si la gravité est active
         if (coyoteTimeCounter > 0f && Input.GetButtonDown("Jump") && rb.useGravity)
         {
             Jump();
@@ -75,14 +79,15 @@ public class PlayerMovement : MonoBehaviour
 
     private void HandleGroundMovement()
     {
-        // Si la gravité est désactivée (en train de grimper), on laisse le ClimbingController gérer la physique
-        if (!rb.useGravity) return;
+        // On applique le mouvement au sol UNIQUEMENT si on a la gravité, qu'on ne rebondit pas, ET qu'on touche le sol !
+        if (!rb.useGravity || bounceTimer > 0f || !isGrounded) return;
 
-        float moveX = Input.GetAxis("Horizontal");
-        float moveZ = Input.GetAxis("Vertical");
+        // Utilisation de GetAxisRaw pour un arrêt immédiat sans lissage d'entrée
+        float moveX = Input.GetAxisRaw("Horizontal");
+        float moveZ = Input.GetAxisRaw("Vertical");
 
-        Vector3 moveDirection = transform.right * moveX + transform.forward * moveZ;
-        Vector3 targetVelocity = moveDirection.normalized * moveSpeed;
+        Vector3 moveDirection = (transform.right * moveX + transform.forward * moveZ).normalized;
+        Vector3 targetVelocity = moveDirection * moveSpeed;
 
         // Conserve la vitesse verticale de la gravité ou du saut
         targetVelocity.y = rb.linearVelocity.y;
@@ -99,5 +104,26 @@ public class PlayerMovement : MonoBehaviour
     private void Jump()
     {
         rb.linearVelocity = new Vector3(rb.linearVelocity.x, jumpForce, rb.linearVelocity.z);
+    }
+    
+    private void OnCollisionEnter(Collision collision)
+    {
+        // Vérifie si l'objet touché possède un composant ClimbableSurface
+        ClimbableSurface surface = collision.collider.GetComponent<ClimbableSurface>();
+    
+        if (surface != null && surface.SurfaceType != null && surface.SurfaceType.hasBounce)
+        {
+            // Récupère la normale exacte du point d'impact
+            Vector3 contactNormal = collision.contacts[0].normal;
+
+            // Annule la vitesse actuelle pour un rebond net et propre
+            rb.linearVelocity = Vector3.zero;
+
+            // Applique l'impulsion de rebond en fonction de la force définie dans le SurfaceTypeSO
+            rb.AddForce(contactNormal * surface.SurfaceType.bounceForce, ForceMode.Impulse);
+
+            // Bloque le script de mouvement au sol pendant 0.25s pour laisser le rebond s'exprimer
+            bounceTimer = 0.25f;
+        }
     }
 }
