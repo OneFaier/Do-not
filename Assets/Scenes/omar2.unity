@@ -237,6 +237,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6053
   m_Size: {x: 10, y: 0.5, z: 10}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -2701,6 +2702,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -3393,6 +3395,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -4391,6 +4394,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -5068,6 +5072,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 4116
   m_Size: {x: 8.21252, y: 1.0261818, z: -8.101654}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -8251,6 +8256,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 4116
   m_Size: {x: 8.21252, y: 1.0261818, z: -8.101654}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -24389,6 +24395,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -24745,6 +24752,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -25873,6 +25881,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 4116
   m_Size: {x: 8.21252, y: 1.0261818, z: -8.101654}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -34491,6 +34500,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -35192,7 +35202,11 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
       propertyPath: pullSpeed
-      value: 2.25
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
+      propertyPath: grabRadius
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
       propertyPath: swingForce
@@ -35200,43 +35214,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
       propertyPath: vaultForce
-      value: 8
-      objectReference: {fileID: 0}
-    - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
-      propertyPath: grabCooldown
-      value: 0.1
+      value: 10
       objectReference: {fileID: 0}
     - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
       propertyPath: maxRopeLength
-      value: 4
-      objectReference: {fileID: 0}
-    - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
-      propertyPath: minRopeLength
-      value: 0.75
-      objectReference: {fileID: 0}
-    - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
-      propertyPath: leftHandCooldown
-      value: 0.5
+      value: 5
       objectReference: {fileID: 0}
     - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
       propertyPath: maxReachDistance
-      value: 3.5
-      objectReference: {fileID: 0}
-    - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
-      propertyPath: rightHandCooldown
-      value: 0.5
-      objectReference: {fileID: 0}
-    - target: {fileID: 4395805619860072332, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
-      propertyPath: jumpForce
-      value: 6
-      objectReference: {fileID: 0}
-    - target: {fileID: 4395805619860072332, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
-      propertyPath: moveSpeed
-      value: 6
-      objectReference: {fileID: 0}
-    - target: {fileID: 4395805619860072332, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
-      propertyPath: airControl
-      value: 3
+      value: 5
       objectReference: {fileID: 0}
     - target: {fileID: 7095123624243484595, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
       propertyPath: m_Name
@@ -36007,6 +35993,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -36699,6 +36686,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -37167,6 +37155,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -37523,6 +37512,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -38460,6 +38450,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -38928,6 +38919,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -39976,6 +39968,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 4116
   m_Size: {x: 8.21252, y: 1.0261818, z: -8.101654}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -56114,6 +56107,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 6122
   m_Size: {x: 1, y: 1, z: 1}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -57386,6 +57380,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 4116
   m_Size: {x: 8.21252, y: 1.0261818, z: -8.101654}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -73713,6 +73708,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 4116
   m_Size: {x: 8.21252, y: 1.0261818, z: -8.101654}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
@@ -90029,6 +90025,7 @@ MonoBehaviour:
   m_UnmodifiedMeshVersion: 4116
   m_Size: {x: 8.21252, y: 1.0261818, z: -8.101654}
   m_LocalCenter: {x: 0, y: 0, z: 0}
+  m_PivotRatio: {x: 0, y: 0, z: 0}
   references:
     version: 2
     RefIds:
