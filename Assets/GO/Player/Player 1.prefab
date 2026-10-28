@@ -195,6 +195,7 @@ GameObject:
   - component: {fileID: 82332050762618211}
   - component: {fileID: 8061724874943820992}
   - component: {fileID: 8359101331311082490}
+  - component: {fileID: 7076445185205579516}
   m_Layer: 0
   m_Name: Player 1
   m_TagString: Untagged
@@ -235,12 +236,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
   rb: {fileID: 8061724874943820992}
   cameraTransform: {fileID: 5482071481093233847}
-  moveSpeed: 5
-  jumpForce: 5
-  groundLayer:
-    serializedVersion: 2
-    m_Bits: 128
+  moveSpeed: 6
+  jumpForce: 6
   groundCheckDistance: 1.1
+  groundCheckRadius: 0.2
+  coyoteTime: 0.2
   mouseSensitivity: 2
   maxPitch: 85
 --- !u!114 &82332050762618211
@@ -262,11 +262,16 @@ MonoBehaviour:
   climbableLayer:
     serializedVersion: 2
     m_Bits: 64
-  maxReachDistance: 15
-  pullSpeed: 8
-  minRopeLength: 0.5
-  maxRopeLength: 10
-  swingForce: 25
+  handStamina: {fileID: 7076445185205579516}
+  grabRadius: 0.25
+  maxReachDistance: 3.5
+  pullSpeed: 2.25
+  minRopeLength: 0.75
+  maxRopeLength: 4
+  grabCooldown: 0.1
+  leftHandCooldown: 0.5
+  rightHandCooldown: 0.5
+  swingForce: 12
   vaultForce: 8
   leftHandIdleOffset: {x: -0.4, y: -0.3, z: 0.8}
   rightHandIdleOffset: {x: 0.4, y: -0.3, z: 0.8}
@@ -320,6 +325,36 @@ CapsuleCollider:
   m_Height: 2
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &7076445185205579516
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7095123624243484595}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fb890d215d9d69949bbdbbc8fe6e0ca4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HandStamina
+  leftHand:
+    maxHoldTime: 8
+    regenDelay: 1
+    regenSpeed: 2
+    minimumGrabStamina: 1
+  rightHand:
+    maxHoldTime: 8
+    regenDelay: 1
+    regenSpeed: 2
+    minimumGrabStamina: 1
+  vaultStaminaCost: 1
+  leftHandRenderer: {fileID: 6367862978048195988}
+  rightHandRenderer: {fileID: 2510645446925578415}
+  exhaustedColor: {r: 1, g: 0, b: 0, a: 1}
+  fullRedThreshold: 0.1
+  colorProgression: 1
+  leftCurrentStamina: 0
+  rightCurrentStamina: 0
 --- !u!1 &8071345582218301100
 GameObject:
   m_ObjectHideFlags: 0
