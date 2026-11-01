@@ -1778,6 +1778,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: b99b35aa33ea2ad45961e9759a223325, type: 2}
+    - target: {fileID: 4395805619860072332, guid: dcc61e1e46f7be840b20c14857d7ea0a, type: 3}
+      propertyPath: airControl
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 6367862978048195988, guid: dcc61e1e46f7be840b20c14857d7ea0a, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
