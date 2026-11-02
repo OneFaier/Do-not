@@ -12,7 +12,6 @@ public class OmarPlayer : MonoBehaviour
     [SerializeField] private HandStamina handStamina;
 
     [Header("Réglages Escalade")]
-    [SerializeField] private float grabRadius = 0.25f; // Rayon de la zone de grab (taille du cylindre)
     [SerializeField] private float maxReachDistance = 15f;
     [SerializeField] private float pullSpeed = 8f;
     [SerializeField] private float minRopeLength = 0.5f;
@@ -23,9 +22,15 @@ public class OmarPlayer : MonoBehaviour
     [SerializeField] private float leftHandCooldown = 0.4f;
     [SerializeField] private float rightHandCooldown = 0.4f;
 
-    [Header("Mouvement en l'air")]
+    [Header("Balancement")]
     [SerializeField] private float swingForce = 25f;
+
+    [Header("Vault")]
     [SerializeField] private float vaultForce = 8f;
+
+    [Tooltip("0 = horizontal, 45 = diagonal, 90 = vertical.")]
+    [Range(0f, 90f)]
+    [SerializeField] private float vaultAngle = 35f;
 
     [Header("Positions au repos")]
     [SerializeField] private Vector3 leftHandIdleOffset =
@@ -33,6 +38,8 @@ public class OmarPlayer : MonoBehaviour
 
     [SerializeField] private Vector3 rightHandIdleOffset =
         new Vector3(0.4f, -0.3f, 0.8f);
+
+    private OmarMovement movement;
 
     private bool isLeftGripping;
     private bool isRightGripping;
@@ -57,15 +64,14 @@ public class OmarPlayer : MonoBehaviour
         if (!handStamina)
             handStamina = GetComponent<HandStamina>();
 
-        // Pour les objets qui possédaient déjà OmarPlayer
-        // avant l'ajout du RequireComponent.
         if (!handStamina)
             handStamina = gameObject.AddComponent<HandStamina>();
+
+        movement = GetComponent<OmarMovement>();
     }
 
     private void Update()
     {
-        // Mise à jour des cooldowns.
         if (grabTimer > 0f)
             grabTimer -= Time.deltaTime;
 
@@ -75,24 +81,28 @@ public class OmarPlayer : MonoBehaviour
         if (rightCooldownTimer > 0f)
             rightCooldownTimer -= Time.deltaTime;
 
-        // Consommation et récupération des deux mains.
         handStamina.Tick(
             isLeftGripping,
             isRightGripping,
             Time.deltaTime);
 
-        // Une main épuisée lâche automatiquement.
         if (isLeftGripping && handStamina.IsEmpty(0))
             ReleaseHand(0);
 
         if (isRightGripping && handStamina.IsEmpty(1))
             ReleaseHand(1);
 
-        HandleGrabInput(0, ref isLeftGripping, ref leftGrabPoint);
-        HandleGrabInput(1, ref isRightGripping, ref rightGrabPoint);
+        HandleGrabInput(
+            0,
+            ref isLeftGripping,
+            ref leftGrabPoint);
+
+        HandleGrabInput(
+            1,
+            ref isRightGripping,
+            ref rightGrabPoint);
 
         HandleVaultInput();
-
         UpdateHandPositions();
     }
 
@@ -127,11 +137,14 @@ public class OmarPlayer : MonoBehaviour
                 isGripping = true;
                 grabPoint = hit.point;
 
+                // Une nouvelle accroche met fin au supplément du vault.
+                if (movement)
+                    movement.CancelVaultBoost();
+
                 float distToPoint = Vector3.Distance(
                     transform.position,
                     grabPoint);
 
-                // Si l'autre main tient déjà, on fait une moyenne.
                 if ((mouseButton == 0 && isRightGripping)
                     || (mouseButton == 1 && isLeftGripping))
                 {
@@ -148,14 +161,12 @@ public class OmarPlayer : MonoBehaviour
                     minRopeLength,
                     maxRopeLength);
 
-                // Adoucit la vitesse pour encaisser le choc.
                 playerRb.linearVelocity *= 0.3f;
 
                 grabTimer = grabCooldown;
             }
         }
 
-        // Lâcher manuel.
         if (Input.GetMouseButtonUp(mouseButton) && isGripping)
         {
             ReleaseHand(mouseButton);
@@ -166,14 +177,16 @@ public class OmarPlayer : MonoBehaviour
     {
         if (mouseButton == 0)
         {
-            if (!isLeftGripping) return;
+            if (!isLeftGripping)
+                return;
 
             isLeftGripping = false;
             leftCooldownTimer = leftHandCooldown;
         }
         else
         {
-            if (!isRightGripping) return;
+            if (!isRightGripping)
+                return;
 
             isRightGripping = false;
             rightCooldownTimer = rightHandCooldown;
@@ -184,30 +197,55 @@ public class OmarPlayer : MonoBehaviour
 
     private void HandleVaultInput()
     {
-        // Espace déclenche le vault.
         if (!Input.GetButtonDown("Jump"))
             return;
 
-        // Au moins une main doit être accrochée.
         if (!isLeftGripping && !isRightGripping)
             return;
 
-        // Consomme de la stamina sur les deux mains.
         handStamina.ConsumeVaultStamina();
 
-        // Lâche automatiquement les prises.
         ReleaseHand(0);
         ReleaseHand(1);
 
-        // Même direction et même puissance d'éjection qu'avant.
+        // Cap horizontal donné par la caméra.
+        Vector3 horizontalDirection = Vector3.ProjectOnPlane(
+            mainCamera.transform.forward,
+            Vector3.up);
+
+        if (horizontalDirection.sqrMagnitude < 0.0001f)
+        {
+            horizontalDirection = Vector3.ProjectOnPlane(
+                transform.forward,
+                Vector3.up);
+        }
+
+        if (horizontalDirection.sqrMagnitude < 0.0001f)
+            horizontalDirection = Vector3.forward;
+
+        horizontalDirection.Normalize();
+
+        float angleRadians =
+            Mathf.Clamp(vaultAngle, 0f, 90f) * Mathf.Deg2Rad;
+
         Vector3 vaultDirection =
-            (Vector3.up * 1.5f + mainCamera.transform.forward).normalized;
+            horizontalDirection * Mathf.Cos(angleRadians)
+            + Vector3.up * Mathf.Sin(angleRadians);
 
-        playerRb.linearVelocity = Vector3.zero;
+        Vector3 impulse = vaultDirection * vaultForce;
 
-        playerRb.AddForce(
-            vaultDirection * vaultForce,
-            ForceMode.Impulse);
+        // Les mains sont relâchées : retour à la gravité normale.
+        playerRb.useGravity = true;
+
+        if (movement)
+        {
+            movement.ApplyVaultImpulse(impulse);
+        }
+        else
+        {
+            playerRb.linearVelocity = Vector3.zero;
+            playerRb.AddForce(impulse, ForceMode.Impulse);
+        }
     }
 
     private void UpdateHandPositions()
@@ -233,7 +271,8 @@ public class OmarPlayer : MonoBehaviour
 
         playerRb.useGravity = !isClimbing;
 
-        if (!isClimbing) return;
+        if (!isClimbing)
+            return;
 
         Vector3 centerOfGrip = Vector3.zero;
         int activeGrips = 0;
@@ -264,7 +303,7 @@ public class OmarPlayer : MonoBehaviour
         // 1. Gravité simulée.
         currentVel += Physics.gravity * Time.fixedDeltaTime;
 
-        // 2. Hissage en maintenant Shift gauche.
+        // 2. Hissage avec Shift gauche.
         if (Input.GetKey(KeyCode.LeftShift))
         {
             currentRopeLength -= pullSpeed * Time.fixedDeltaTime;
@@ -293,7 +332,7 @@ public class OmarPlayer : MonoBehaviour
                 currentVel,
                 -dirToGrip);
 
-            if (outwardSpeed > 0)
+            if (outwardSpeed > 0f)
             {
                 currentVel += dirToGrip * outwardSpeed;
             }
@@ -301,11 +340,11 @@ public class OmarPlayer : MonoBehaviour
 
         // 4. Balancement avec ZQSD.
         Vector3 camForward = mainCamera.transform.forward;
-        camForward.y = 0;
+        camForward.y = 0f;
         camForward.Normalize();
 
         Vector3 camRight = mainCamera.transform.right;
-        camRight.y = 0;
+        camRight.y = 0f;
         camRight.Normalize();
 
         float moveX = Input.GetAxis("Horizontal");
@@ -317,16 +356,15 @@ public class OmarPlayer : MonoBehaviour
         currentVel +=
             swingDir * (swingForce * Time.fixedDeltaTime);
 
-        // Léger frein global.
         currentVel *= 0.98f;
 
         playerRb.linearVelocity = currentVel;
     }
 
-    // Détection utilisée par le crosshair.
     public bool HasGrabbableTarget()
     {
-        if (!mainCamera) return false;
+        if (!mainCamera)
+            return false;
 
         Ray ray = mainCamera.ViewportPointToRay(
             new Vector3(0.5f, 0.5f, 0f));

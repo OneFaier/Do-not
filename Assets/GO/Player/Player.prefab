@@ -252,6 +252,7 @@ MonoBehaviour:
   rightHandCooldown: 0.4
   swingForce: 7
   vaultForce: 8
+  vaultDirectionOffset: {x: 0, y: 0.5, z: 1}
   maxClimbSpeed: 15
   leftHandIdleOffset: {x: -0.4, y: -0.3, z: 0.8}
   rightHandIdleOffset: {x: 0.4, y: -0.3, z: 0.8}
@@ -271,6 +272,8 @@ MonoBehaviour:
   cameraTransform: {fileID: 5482071481093233847}
   moveSpeed: 5
   jumpForce: 5
+  groundAcceleration: 15
+  airControl: 1
   groundCheckDistance: 1.1
   groundCheckRadius: 0.2
   coyoteTime: 0.2
@@ -392,7 +395,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: c38413b8ecb6cdf4bb5cb4c64a307993, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -482,7 +485,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: b99b35aa33ea2ad45961e9759a223325, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

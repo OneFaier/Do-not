@@ -35190,6 +35190,18 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
+      propertyPath: vaultAngle
+      value: 50
+      objectReference: {fileID: 0}
+    - target: {fileID: 82332050762618211, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
+      propertyPath: vaultForce
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 4395805619860072332, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
+      propertyPath: vaultBoostDuration
+      value: 0.3
+      objectReference: {fileID: 0}
     - target: {fileID: 7095123624243484595, guid: b1bf753ba39ab98428bc883e83dd0af7, type: 3}
       propertyPath: m_Name
       value: Player 1
