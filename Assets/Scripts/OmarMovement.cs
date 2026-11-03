@@ -10,6 +10,11 @@ public class OmarMovement : MonoBehaviour
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float jumpForce = 5f;
 
+    [Header("Gravité du joueur")]
+    [Tooltip("1 = normale. Active uniquement hors escalade.")]
+    [Min(0f)]
+    [SerializeField] private float gravityMultiplier = 1.5f;
+
     [Header("Détection Sol")]
     [SerializeField] private float groundCheckDistance = 1.1f;
     [SerializeField] private float groundCheckRadius = 0.2f;
@@ -20,11 +25,19 @@ public class OmarMovement : MonoBehaviour
     [SerializeField] private float maxPitch = 85f;
 
     [Header("Poussée horizontale du vault")]
-    [Tooltip("Durée pendant laquelle la poussée horizontale diminue jusqu'à zéro.")]
     [Min(0.01f)]
     [SerializeField] private float vaultBoostDuration = 0.3f;
 
-    private float cameraPitch = 0f;
+    [Header("Rebond des surfaces")]
+    [Tooltip(
+        "Durée pendant laquelle ZQSD ne remplace pas " +
+        "la vitesse du rebond. La caméra reste contrôlable.")]
+    [Min(0f)]
+    [SerializeField] private float bounceControlDelay = 0.25f;
+
+    private OmarPlayer climbing;
+
+    private float cameraPitch;
     private bool isGrounded;
     private float coyoteTimeCounter;
 
@@ -32,10 +45,24 @@ public class OmarMovement : MonoBehaviour
     private float vaultBoostRemaining;
     private float activeVaultBoostDuration;
 
+    private float bounceTimer;
+
+    private bool IsClimbing
+    {
+        get
+        {
+            return climbing != null
+                ? climbing.IsClimbing
+                : !rb.useGravity;
+        }
+    }
+
     private void Start()
     {
         if (!rb)
             rb = GetComponent<Rigidbody>();
+
+        climbing = GetComponent<OmarPlayer>();
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
@@ -46,19 +73,16 @@ public class OmarMovement : MonoBehaviour
         HandleMouseLook();
         CheckGrounded();
 
-        // Gestion initiale du coyote time.
         if (isGrounded)
-        {
             coyoteTimeCounter = coyoteTime;
-        }
         else
-        {
             coyoteTimeCounter -= Time.deltaTime;
-        }
 
         if (coyoteTimeCounter > 0f
             && Input.GetButtonDown("Jump")
-            && rb.useGravity)
+            && !IsClimbing
+            && rb.useGravity
+            && bounceTimer <= 0f)
         {
             Jump();
         }
@@ -67,6 +91,14 @@ public class OmarMovement : MonoBehaviour
     private void FixedUpdate()
     {
         HandleGroundMovement();
+        ApplyExtraGravity();
+
+        if (bounceTimer > 0f)
+        {
+            bounceTimer = Mathf.Max(
+                0f,
+                bounceTimer - Time.fixedDeltaTime);
+        }
     }
 
     private void HandleMouseLook()
@@ -104,17 +136,19 @@ public class OmarMovement : MonoBehaviour
 
     private void HandleGroundMovement()
     {
-        // Pendant l'escalade, OmarPlayer gère la physique.
-        if (!rb.useGravity)
+        if (IsClimbing || !rb.useGravity)
         {
             CancelVaultBoost();
             return;
         }
 
-        // Même déplacement qu'avant, y compris en l'air.
+        // Laisse l'impulsion du rebond s'exprimer.
+        if (bounceTimer > 0f)
+            return;
+
+        // Contrôle initial : ZQSD au sol comme en l'air.
         Vector3 targetVelocity = GetInputVelocity();
 
-        // Ajoute uniquement le supplément de vitesse du vault.
         if (vaultBoostRemaining > 0f)
         {
             float remainingRatio = Mathf.Clamp01(
@@ -128,19 +162,31 @@ public class OmarMovement : MonoBehaviour
                 vaultBoostRemaining - Time.fixedDeltaTime);
         }
 
-        // La vitesse verticale reste gérée par la physique.
         targetVelocity.y = rb.linearVelocity.y;
 
         rb.linearVelocity = targetVelocity;
     }
 
-    // Appelé uniquement lors d'un vault.
+    private void ApplyExtraGravity()
+    {
+        if (IsClimbing || !rb.useGravity)
+            return;
+
+        // Unity applique déjà la gravité normale.
+        Vector3 extraGravity =
+            Physics.gravity
+            * (Mathf.Max(0f, gravityMultiplier) - 1f);
+
+        rb.AddForce(extraGravity, ForceMode.Acceleration);
+    }
+
     public void ApplyVaultImpulse(Vector3 impulse)
     {
         if (!rb)
             rb = GetComponent<Rigidbody>();
 
-        // Comme ForceMode.Impulse : variation de vitesse = impulsion / masse.
+        bounceTimer = 0f;
+
         Vector3 vaultVelocity = impulse / rb.mass;
 
         vaultHorizontalVelocity = new Vector3(
@@ -153,12 +199,11 @@ public class OmarMovement : MonoBehaviour
 
         vaultBoostRemaining = activeVaultBoostDuration;
 
-        // Remplace l'ancien élan, comme le vault initial,
-        // et conserve le déplacement ZQSD en supplément.
         Vector3 velocity =
             GetInputVelocity() + vaultHorizontalVelocity;
 
         velocity.y = vaultVelocity.y;
+
         rb.linearVelocity = velocity;
 
         coyoteTimeCounter = 0f;
@@ -168,6 +213,13 @@ public class OmarMovement : MonoBehaviour
     {
         vaultHorizontalVelocity = Vector3.zero;
         vaultBoostRemaining = 0f;
+    }
+
+    // Appelé quand une nouvelle prise est attrapée.
+    public void NotifyGrabbed()
+    {
+        CancelVaultBoost();
+        bounceTimer = 0f;
     }
 
     private void CheckGrounded()
@@ -186,5 +238,43 @@ public class OmarMovement : MonoBehaviour
             rb.linearVelocity.x,
             jumpForce,
             rb.linearVelocity.z);
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        ClimbableSurface surface =
+            collision.collider.GetComponentInParent<ClimbableSurface>();
+
+        if (surface == null)
+            return;
+
+        SurfaceTypeSO type = surface.SurfaceType;
+
+        if (type == null || !type.hasBounce)
+            return;
+
+        if (collision.contactCount == 0)
+            return;
+
+        // Un rebond libère les mains pour éviter que
+        // la corde et le rebond se contredisent.
+        if (climbing)
+            climbing.ReleaseForBounce();
+
+        CancelVaultBoost();
+
+        Vector3 contactNormal =
+            collision.GetContact(0).normal;
+
+        rb.useGravity = true;
+        rb.linearVelocity = Vector3.zero;
+
+        rb.AddForce(
+            contactNormal * Mathf.Max(0f, type.bounceForce),
+            ForceMode.Impulse);
+
+        bounceTimer = Mathf.Max(0f, bounceControlDelay);
+        coyoteTimeCounter = 0f;
+        isGrounded = false;
     }
 }

@@ -47,11 +47,26 @@ public class OmarPlayer : MonoBehaviour
     private Vector3 leftGrabPoint;
     private Vector3 rightGrabPoint;
 
+    private Vector3 leftGrabNormal;
+    private Vector3 rightGrabNormal;
+
+    private ClimbableSurface leftSurface;
+    private ClimbableSurface rightSurface;
+
+    private Collider leftCollider;
+    private Collider rightCollider;
+
+    private float leftGrabDuration;
+    private float rightGrabDuration;
+
     private float currentRopeLength;
 
     private float grabTimer;
     private float leftCooldownTimer;
     private float rightCooldownTimer;
+
+    public bool IsClimbing =>
+        isLeftGripping || isRightGripping;
 
     private void Start()
     {
@@ -95,12 +110,20 @@ public class OmarPlayer : MonoBehaviour
         HandleGrabInput(
             0,
             ref isLeftGripping,
-            ref leftGrabPoint);
+            ref leftGrabPoint,
+            ref leftGrabNormal,
+            ref leftSurface,
+            ref leftCollider,
+            ref leftGrabDuration);
 
         HandleGrabInput(
             1,
             ref isRightGripping,
-            ref rightGrabPoint);
+            ref rightGrabPoint,
+            ref rightGrabNormal,
+            ref rightSurface,
+            ref rightCollider,
+            ref rightGrabDuration);
 
         HandleVaultInput();
         UpdateHandPositions();
@@ -111,10 +134,28 @@ public class OmarPlayer : MonoBehaviour
         HandleClimbingPhysics();
     }
 
+    private SurfaceTypeSO GetSurfaceType(ClimbableSurface surface)
+    {
+        return surface != null ? surface.SurfaceType : null;
+    }
+
+    private bool CanClimbSurface(ClimbableSurface surface)
+    {
+        SurfaceTypeSO type = GetSurfaceType(surface);
+
+        // Sans composant ou sans asset :
+        // comportement standard.
+        return type == null || type.canClimb;
+    }
+
     private void HandleGrabInput(
         int mouseButton,
         ref bool isGripping,
-        ref Vector3 grabPoint)
+        ref Vector3 grabPoint,
+        ref Vector3 grabNormal,
+        ref ClimbableSurface handSurface,
+        ref Collider handCollider,
+        ref float grabDuration)
     {
         float specificCooldown = mouseButton == 0
             ? leftCooldownTimer
@@ -134,36 +175,100 @@ public class OmarPlayer : MonoBehaviour
                 maxReachDistance,
                 climbableLayer))
             {
-                isGripping = true;
-                grabPoint = hit.point;
+                ClimbableSurface surface =
+                    hit.collider.GetComponentInParent<ClimbableSurface>();
 
-                // Une nouvelle accroche met fin au supplément du vault.
-                if (movement)
-                    movement.CancelVaultBoost();
-
-                float distToPoint = Vector3.Distance(
-                    transform.position,
-                    grabPoint);
-
-                if ((mouseButton == 0 && isRightGripping)
-                    || (mouseButton == 1 && isLeftGripping))
+                if (CanClimbSurface(surface))
                 {
-                    currentRopeLength =
-                        (currentRopeLength + distToPoint) / 2f;
+                    isGripping = true;
+
+                    grabPoint = hit.point;
+                    grabNormal = hit.normal;
+
+                    handSurface = surface;
+                    handCollider = hit.collider;
+                    grabDuration = 0f;
+
+                    if (movement)
+                        movement.NotifyGrabbed();
+
+                    float distToPoint = Vector3.Distance(
+                        transform.position,
+                        grabPoint);
+
+                    if ((mouseButton == 0 && isRightGripping)
+                        || (mouseButton == 1 && isLeftGripping))
+                    {
+                        currentRopeLength =
+                            (currentRopeLength + distToPoint) / 2f;
+                    }
+                    else
+                    {
+                        currentRopeLength = distToPoint;
+                    }
+
+                    currentRopeLength = Mathf.Clamp(
+                        currentRopeLength,
+                        minRopeLength,
+                        maxRopeLength);
+
+                    playerRb.linearVelocity *= 0.3f;
+                    grabTimer = grabCooldown;
+
+                    SurfaceTypeSO type = GetSurfaceType(surface);
+
+                    if (type != null && type.grabSound != null)
+                    {
+                        AudioSource.PlayClipAtPoint(
+                            type.grabSound,
+                            hit.point);
+                    }
                 }
-                else
+            }
+        }
+
+        if (isGripping)
+        {
+            // Si la prise est détruite ou désactivée,
+            // la main ne doit pas rester suspendue dans le vide.
+            if (handCollider == null
+                || !handCollider.enabled
+                || !handCollider.gameObject.activeInHierarchy)
+            {
+                ReleaseHand(mouseButton);
+                return;
+            }
+
+            grabDuration += Time.deltaTime;
+
+            SurfaceTypeSO type = GetSurfaceType(handSurface);
+
+            if (type != null)
+            {
+                if (!type.canClimb)
                 {
-                    currentRopeLength = distToPoint;
+                    ReleaseHand(mouseButton);
+                    return;
                 }
 
-                currentRopeLength = Mathf.Clamp(
-                    currentRopeLength,
-                    minRopeLength,
-                    maxRopeLength);
+                if (type.isSlippery)
+                {
+                    SlideGrabPoint(
+                        ref grabPoint,
+                        ref grabNormal,
+                        handCollider,
+                        type);
+                }
 
-                playerRb.linearVelocity *= 0.3f;
-
-                grabTimer = grabCooldown;
+                // Cette limite s'ajoute à la stamina :
+                // la première limite atteinte libère la main.
+                if (type.useMaxGrabTime
+                    && type.maxGrabTime > 0f
+                    && grabDuration >= type.maxGrabTime)
+                {
+                    ReleaseHand(mouseButton);
+                    return;
+                }
             }
         }
 
@@ -171,6 +276,63 @@ public class OmarPlayer : MonoBehaviour
         {
             ReleaseHand(mouseButton);
         }
+    }
+
+    private void SlideGrabPoint(
+        ref Vector3 grabPoint,
+        ref Vector3 grabNormal,
+        Collider handCollider,
+        SurfaceTypeSO type)
+    {
+        Vector3 slideDirection;
+
+        if (grabNormal.y < -0.5f)
+        {
+            // Plafond : glisse horizontalement vers le joueur.
+            slideDirection = transform.position - grabPoint;
+            slideDirection.y = 0f;
+
+            if (slideDirection.sqrMagnitude < 0.0001f)
+            {
+                slideDirection = Vector3.ProjectOnPlane(
+                    transform.forward,
+                    Vector3.up);
+            }
+
+            if (slideDirection.sqrMagnitude < 0.0001f)
+                slideDirection = Vector3.forward;
+
+            slideDirection.Normalize();
+        }
+        else
+        {
+            // Même comportement que le prototype :
+            // glissement vers le bas sur les murs.
+            slideDirection = Vector3.down;
+        }
+
+        Vector3 nextGrabPoint =
+            grabPoint
+            + slideDirection
+            * Mathf.Max(0f, type.slideSpeed)
+            * Time.deltaTime;
+
+        Ray slideRay = new Ray(
+            nextGrabPoint + grabNormal * 0.3f,
+            -grabNormal);
+
+        // Recherche uniquement sur le collider déjà tenu.
+        if (handCollider.Raycast(
+            slideRay,
+            out RaycastHit slideHit,
+            0.6f))
+        {
+            grabPoint = slideHit.point;
+            grabNormal = slideHit.normal;
+        }
+
+        // Comme dans le prototype : si le point ne peut pas
+        // avancer sur la surface, il reste au dernier point valide.
     }
 
     private void ReleaseHand(int mouseButton)
@@ -182,6 +344,10 @@ public class OmarPlayer : MonoBehaviour
 
             isLeftGripping = false;
             leftCooldownTimer = leftHandCooldown;
+
+            leftSurface = null;
+            leftCollider = null;
+            leftGrabDuration = 0f;
         }
         else
         {
@@ -190,9 +356,23 @@ public class OmarPlayer : MonoBehaviour
 
             isRightGripping = false;
             rightCooldownTimer = rightHandCooldown;
+
+            rightSurface = null;
+            rightCollider = null;
+            rightGrabDuration = 0f;
         }
 
         handStamina.NotifyReleased(mouseButton);
+    }
+
+    // Lâcher sans vault et sans coût de vault.
+    // Utilisé lors d'une collision avec une surface rebondissante.
+    public void ReleaseForBounce()
+    {
+        ReleaseHand(0);
+        ReleaseHand(1);
+
+        playerRb.useGravity = true;
     }
 
     private void HandleVaultInput()
@@ -200,7 +380,7 @@ public class OmarPlayer : MonoBehaviour
         if (!Input.GetButtonDown("Jump"))
             return;
 
-        if (!isLeftGripping && !isRightGripping)
+        if (!IsClimbing)
             return;
 
         handStamina.ConsumeVaultStamina();
@@ -208,7 +388,6 @@ public class OmarPlayer : MonoBehaviour
         ReleaseHand(0);
         ReleaseHand(1);
 
-        // Cap horizontal donné par la caméra.
         Vector3 horizontalDirection = Vector3.ProjectOnPlane(
             mainCamera.transform.forward,
             Vector3.up);
@@ -234,7 +413,6 @@ public class OmarPlayer : MonoBehaviour
 
         Vector3 impulse = vaultDirection * vaultForce;
 
-        // Les mains sont relâchées : retour à la gravité normale.
         playerRb.useGravity = true;
 
         if (movement)
@@ -265,13 +443,40 @@ public class OmarPlayer : MonoBehaviour
             : defaultRight;
     }
 
+    private float GetHandGripMultiplier(ClimbableSurface surface)
+    {
+        SurfaceTypeSO type = GetSurfaceType(surface);
+
+        return type != null
+            ? Mathf.Max(0f, type.gripMultiplier)
+            : 1f;
+    }
+
+    private float GetGripMultiplier()
+    {
+        float total = 0f;
+        int count = 0;
+
+        if (isLeftGripping)
+        {
+            total += GetHandGripMultiplier(leftSurface);
+            count++;
+        }
+
+        if (isRightGripping)
+        {
+            total += GetHandGripMultiplier(rightSurface);
+            count++;
+        }
+
+        return count > 0 ? total / count : 1f;
+    }
+
     private void HandleClimbingPhysics()
     {
-        bool isClimbing = isLeftGripping || isRightGripping;
+        playerRb.useGravity = !IsClimbing;
 
-        playerRb.useGravity = !isClimbing;
-
-        if (!isClimbing)
+        if (!IsClimbing)
             return;
 
         Vector3 centerOfGrip = Vector3.zero;
@@ -300,18 +505,22 @@ public class OmarPlayer : MonoBehaviour
 
         Vector3 currentVel = playerRb.linearVelocity;
 
-        // 1. Gravité simulée.
+        // Gravité d'escalade inchangée.
         currentVel += Physics.gravity * Time.fixedDeltaTime;
 
-        // 2. Hissage avec Shift gauche.
+        // La surface modifie la vitesse du pull.
         if (Input.GetKey(KeyCode.LeftShift))
         {
-            currentRopeLength -= pullSpeed * Time.fixedDeltaTime;
+            float effectivePullSpeed =
+                pullSpeed * GetGripMultiplier();
+
+            currentRopeLength -=
+                effectivePullSpeed * Time.fixedDeltaTime;
 
             if (currentDist <= minRopeLength + 0.5f)
             {
                 currentVel.y +=
-                    pullSpeed * 2f * Time.fixedDeltaTime;
+                    effectivePullSpeed * 2f * Time.fixedDeltaTime;
             }
         }
 
@@ -320,7 +529,6 @@ public class OmarPlayer : MonoBehaviour
             minRopeLength,
             maxRopeLength);
 
-        // 3. Effet de corde tendue.
         if (currentDist > currentRopeLength)
         {
             float stretch = currentDist - currentRopeLength;
@@ -333,12 +541,9 @@ public class OmarPlayer : MonoBehaviour
                 -dirToGrip);
 
             if (outwardSpeed > 0f)
-            {
                 currentVel += dirToGrip * outwardSpeed;
-            }
         }
 
-        // 4. Balancement avec ZQSD.
         Vector3 camForward = mainCamera.transform.forward;
         camForward.y = 0f;
         camForward.Normalize();
@@ -369,9 +574,18 @@ public class OmarPlayer : MonoBehaviour
         Ray ray = mainCamera.ViewportPointToRay(
             new Vector3(0.5f, 0.5f, 0f));
 
-        return Physics.Raycast(
+        if (!Physics.Raycast(
             ray,
+            out RaycastHit hit,
             maxReachDistance,
-            climbableLayer);
+            climbableLayer))
+        {
+            return false;
+        }
+
+        ClimbableSurface surface =
+            hit.collider.GetComponentInParent<ClimbableSurface>();
+
+        return CanClimbSurface(surface);
     }
 }

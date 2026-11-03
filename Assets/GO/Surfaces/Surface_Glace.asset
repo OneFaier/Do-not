@@ -15,11 +15,11 @@ MonoBehaviour:
   surfaceName: Glace
   canClimb: 1
   gripMultiplier: 1
-  isSlippery: 0
-  slideSpeed: 2.5
+  isSlippery: 1
+  slideSpeed: 0.75
   useMaxGrabTime: 0
   maxGrabTime: 1.5
   hasBounce: 0
   bounceForce: 7
   grabSound: {fileID: 0}
-  surfaceMaterial: {fileID: 0}
+  surfaceMaterial: {fileID: 2100000, guid: b95f628cc36cb38408b32817109f2b64, type: 2}
