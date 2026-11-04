@@ -252,6 +252,7 @@ MonoBehaviour:
   rightHandCooldown: 0.4
   swingForce: 7
   vaultForce: 8
+  vaultDirectionOffset: {x: 0, y: 0.5, z: 1}
   maxClimbSpeed: 15
   leftHandIdleOffset: {x: -0.4, y: -0.3, z: 0.8}
   rightHandIdleOffset: {x: 0.4, y: -0.3, z: 0.8}
@@ -271,6 +272,8 @@ MonoBehaviour:
   cameraTransform: {fileID: 5482071481093233847}
   moveSpeed: 5
   jumpForce: 5
+  groundAcceleration: 15
+  airControl: 1
   groundCheckDistance: 1.1
   groundCheckRadius: 0.2
   coyoteTime: 0.2

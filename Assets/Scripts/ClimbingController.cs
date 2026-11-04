@@ -100,6 +100,17 @@ public class ClimbingController : MonoBehaviour
         HandleClimbingPhysics();
     }
 
+    private SurfaceTypeSO GetSurfaceType(ClimbableSurface surface)
+    {
+        return surface != null ? surface.SurfaceType : null;
+    }
+
+    private bool CanClimbSurface(ClimbableSurface surface)
+    {
+        SurfaceTypeSO type = GetSurfaceType(surface);
+        return type == null || type.canClimb;
+    }
+
     /// <summary>
     /// Gère la logique d'accrochage, de glissement sur les surfaces et de lâcher pour une main spécifique.
     /// </summary>
@@ -113,9 +124,9 @@ public class ClimbingController : MonoBehaviour
             Ray ray = mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             if (Physics.Raycast(ray, out RaycastHit hit, maxReachDistance, climbableLayer))
             {
-                ClimbableSurface surface = hit.collider.GetComponent<ClimbableSurface>();
+                ClimbableSurface surface = hit.collider.GetComponentInParent<ClimbableSurface>();
 
-                if (surface == null || surface.SurfaceType.canClimb)
+                if (CanClimbSurface(surface))
                 {
                     isGripping = true;
                     grabPoint = hit.point;
@@ -144,50 +155,62 @@ public class ClimbingController : MonoBehaviour
         // --- GESTION DU GLISSEMENT SUR LES SURFACES GLISSANTES ---
         if (isGripping)
         {
+            if (handCollider == null || !handCollider.enabled || !handCollider.gameObject.activeInHierarchy)
+            {
+                ForceReleaseHand(mouseButton, ref isGripping, ref handSurface, ref handCollider, handCooldown);
+                return;
+            }
+
             grabDuration += Time.deltaTime;
 
-            if (handSurface != null && handSurface.SurfaceType != null)
+            if (handSurface != null)
             {
-                SurfaceTypeSO type = handSurface.SurfaceType;
+                SurfaceTypeSO type = GetSurfaceType(handSurface);
 
-                if (type.isSlippery)
+                if (type != null)
                 {
-                    Vector3 nextGrabPoint = grabPoint;
-
-                    if (grabNormal.y < -0.5f) // Cas d'un plafond
+                    if (!type.canClimb)
                     {
-                        Vector3 dirTowardsPlayer = (transform.position - grabPoint);
-                        dirTowardsPlayer.y = 0;
-                        dirTowardsPlayer.Normalize();
-                        if (dirTowardsPlayer == Vector3.zero) dirTowardsPlayer = transform.forward;
-
-                        nextGrabPoint += dirTowardsPlayer * type.slideSpeed * Time.deltaTime;
-                    }
-                    else // Cas d'un mur vertical
-                    {
-                        nextGrabPoint += Vector3.down * type.slideSpeed * Time.deltaTime;
+                        ForceReleaseHand(mouseButton, ref isGripping, ref handSurface, ref handCollider, handCooldown);
+                        return;
                     }
 
-                    // Sécurité : Vérifie si le point de glissement reste sur le même collider exact
-                    if (handCollider != null)
+                    if (type.isSlippery)
                     {
-                        Vector3 rayOrigin = nextGrabPoint + (grabNormal * 0.3f);
-                        if (Physics.Raycast(rayOrigin, -grabNormal, out RaycastHit slideHit, 0.6f, climbableLayer))
+                        Vector3 nextGrabPoint = grabPoint;
+
+                        if (grabNormal.y < -0.5f) // Cas d'un plafond
                         {
-                            if (slideHit.collider == handCollider)
+                            Vector3 dirTowardsPlayer = (transform.position - grabPoint);
+                            dirTowardsPlayer.y = 0;
+                            dirTowardsPlayer.Normalize();
+                            if (dirTowardsPlayer == Vector3.zero) dirTowardsPlayer = transform.forward;
+
+                            nextGrabPoint += dirTowardsPlayer * type.slideSpeed * Time.deltaTime;
+                        }
+                        else // Cas d'un mur vertical
+                        {
+                            nextGrabPoint += Vector3.down * type.slideSpeed * Time.deltaTime;
+                        }
+
+                        // Sécurité : Vérifie si le point de glissement reste sur le même collider exact
+                        if (handCollider != null)
+                        {
+                            Vector3 rayOrigin = nextGrabPoint + (grabNormal * 0.3f);
+                            if (handCollider.Raycast(new Ray(rayOrigin, -grabNormal), out RaycastHit slideHit, 0.6f))
                             {
                                 grabPoint = slideHit.point;
                                 grabNormal = slideHit.normal;
                             }
                         }
                     }
-                }
 
-                // Lâchage automatique si le temps maximum d'accroche est atteint
-                if (type.useMaxGrabTime && type.maxGrabTime > 0f && grabDuration >= type.maxGrabTime)
-                {
-                    ForceReleaseHand(mouseButton, ref isGripping, ref handSurface, ref handCollider, handCooldown);
-                    return;
+                    // Lâchage automatique si le temps maximum d'accroche est atteint
+                    if (type.useMaxGrabTime && type.maxGrabTime > 0f && grabDuration >= type.maxGrabTime)
+                    {
+                        ForceReleaseHand(mouseButton, ref isGripping, ref handSurface, ref handCollider, handCooldown);
+                        return;
+                    }
                 }
             }
         }
@@ -344,5 +367,26 @@ public class ClimbingController : MonoBehaviour
         // Limitation stricte de la vitesse maximale en escalade
         currentVel = Vector3.ClampMagnitude(currentVel, maxClimbSpeed);
         playerRb.linearVelocity = currentVel;
+    }
+
+    /// <summary>
+    /// Vérifie si un élément grimpable est dans le champ de vision et à portée.
+    /// Utilisé notamment par le crosshair pour changer de couleur.
+    /// </summary>
+    public bool HasGrabbableTarget()
+    {
+        if (!mainCamera)
+            return false;
+
+        Ray ray = mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+
+        if (!Physics.Raycast(ray, out RaycastHit hit, maxReachDistance, climbableLayer))
+        {
+            return false;
+        }
+
+        ClimbableSurface surface = hit.collider.GetComponentInParent<ClimbableSurface>();
+
+        return CanClimbSurface(surface);
     }
 }
