@@ -6,9 +6,12 @@ public class OmarMovement : MonoBehaviour
     [SerializeField] private Rigidbody rb;
     [SerializeField] private Transform cameraTransform;
 
-    [Header("Déplacement Sol")]
+    [Header("Déplacement Sol & Air")]
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float jumpForce = 5f;
+    [SerializeField] private float groundAcceleration = 15f;
+    [Range(0f, 10f)]
+    [SerializeField] private float airControl = 0.3f;
 
     [Header("Gravité du joueur")]
     [Tooltip("1 = normale. Active uniquement hors escalade.")]
@@ -29,9 +32,7 @@ public class OmarMovement : MonoBehaviour
     [SerializeField] private float vaultBoostDuration = 0.3f;
 
     [Header("Rebond des surfaces")]
-    [Tooltip(
-        "Durée pendant laquelle ZQSD ne remplace pas " +
-        "la vitesse du rebond. La caméra reste contrôlable.")]
+    [Tooltip("Durée pendant laquelle ZQSD ne remplace pas la vitesse du rebond.")]
     [Min(0f)]
     [SerializeField] private float bounceControlDelay = 0.25f;
 
@@ -90,7 +91,7 @@ public class OmarMovement : MonoBehaviour
 
     private void FixedUpdate()
     {
-        HandleGroundMovement();
+        HandleMovement();
         ApplyExtraGravity();
 
         if (bounceTimer > 0f)
@@ -103,38 +104,26 @@ public class OmarMovement : MonoBehaviour
 
     private void HandleMouseLook()
     {
-        float mouseX =
-            Input.GetAxis("Mouse X") * mouseSensitivity;
-
-        float mouseY =
-            Input.GetAxis("Mouse Y") * mouseSensitivity;
+        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
+        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
 
         transform.Rotate(Vector3.up * mouseX);
 
         cameraPitch -= mouseY;
+        cameraPitch = Mathf.Clamp(cameraPitch, -maxPitch, maxPitch);
 
-        cameraPitch = Mathf.Clamp(
-            cameraPitch,
-            -maxPitch,
-            maxPitch);
-
-        cameraTransform.localRotation =
-            Quaternion.Euler(cameraPitch, 0f, 0f);
+        cameraTransform.localRotation = Quaternion.Euler(cameraPitch, 0f, 0f);
     }
 
-    private Vector3 GetInputVelocity()
+    private Vector3 GetInputDirection()
     {
         float moveX = Input.GetAxisRaw("Horizontal");
         float moveZ = Input.GetAxisRaw("Vertical");
 
-        Vector3 moveDirection =
-            transform.right * moveX
-            + transform.forward * moveZ;
-
-        return moveDirection.normalized * moveSpeed;
+        return (transform.right * moveX + transform.forward * moveZ).normalized;
     }
 
-    private void HandleGroundMovement()
+    private void HandleMovement()
     {
         if (IsClimbing || !rb.useGravity)
         {
@@ -142,29 +131,60 @@ public class OmarMovement : MonoBehaviour
             return;
         }
 
-        // Laisse l'impulsion du rebond s'exprimer.
         if (bounceTimer > 0f)
             return;
 
-        // Contrôle initial : ZQSD au sol comme en l'air.
-        Vector3 targetVelocity = GetInputVelocity();
+        Vector3 inputDir = GetInputDirection();
+        Vector3 currentVelocity = rb.linearVelocity;
+        Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0f, currentVelocity.z);
 
-        if (vaultBoostRemaining > 0f)
+        Vector3 finalHorizontalVelocity;
+
+        if (isGrounded)
         {
-            float remainingRatio = Mathf.Clamp01(
-                vaultBoostRemaining / activeVaultBoostDuration);
+            Vector3 targetVelocity = inputDir * moveSpeed;
 
-            targetVelocity +=
-                vaultHorizontalVelocity * remainingRatio;
+            if (vaultBoostRemaining > 0f)
+            {
+                float remainingRatio = Mathf.Clamp01(
+                    vaultBoostRemaining / activeVaultBoostDuration);
 
-            vaultBoostRemaining = Mathf.Max(
-                0f,
-                vaultBoostRemaining - Time.fixedDeltaTime);
+                targetVelocity += vaultHorizontalVelocity * remainingRatio;
+
+                vaultBoostRemaining = Mathf.Max(
+                    0f,
+                    vaultBoostRemaining - Time.fixedDeltaTime);
+            }
+
+            finalHorizontalVelocity = Vector3.Lerp(
+                horizontalVelocity,
+                targetVelocity,
+                groundAcceleration * Time.fixedDeltaTime);
+        }
+        else
+        {
+            // --- EN L'AIR : Réorientation (Steering) sans accélération infinie ---
+            if (inputDir.magnitude > 0.1f)
+            {
+                float currentMag = horizontalVelocity.magnitude;
+                // Si la vitesse actuelle est supérieure à moveSpeed (ex: après un swing), 
+                // on la conserve comme référence pour ne pas l'écraser ni l'amplifier.
+                float targetMag = Mathf.Max(moveSpeed, currentMag);
+                Vector3 targetVelocity = inputDir * targetMag;
+
+                horizontalVelocity = Vector3.Lerp(
+                    horizontalVelocity,
+                    targetVelocity,
+                    airControl * Time.fixedDeltaTime);
+            }
+
+            finalHorizontalVelocity = horizontalVelocity;
         }
 
-        targetVelocity.y = rb.linearVelocity.y;
-
-        rb.linearVelocity = targetVelocity;
+        rb.linearVelocity = new Vector3(
+            finalHorizontalVelocity.x,
+            currentVelocity.y,
+            finalHorizontalVelocity.z);
     }
 
     private void ApplyExtraGravity()
@@ -172,7 +192,6 @@ public class OmarMovement : MonoBehaviour
         if (IsClimbing || !rb.useGravity)
             return;
 
-        // Unity applique déjà la gravité normale.
         Vector3 extraGravity =
             Physics.gravity
             * (Mathf.Max(0f, gravityMultiplier) - 1f);
@@ -199,10 +218,11 @@ public class OmarMovement : MonoBehaviour
 
         vaultBoostRemaining = activeVaultBoostDuration;
 
-        Vector3 velocity =
-            GetInputVelocity() + vaultHorizontalVelocity;
-
-        velocity.y = vaultVelocity.y;
+        Vector3 currentVel = rb.linearVelocity;
+        Vector3 velocity = new Vector3(
+            currentVel.x + vaultHorizontalVelocity.x,
+            vaultVelocity.y,
+            currentVel.z + vaultHorizontalVelocity.z);
 
         rb.linearVelocity = velocity;
 
@@ -215,7 +235,6 @@ public class OmarMovement : MonoBehaviour
         vaultBoostRemaining = 0f;
     }
 
-    // Appelé quand une nouvelle prise est attrapée.
     public void NotifyGrabbed()
     {
         CancelVaultBoost();
@@ -256,15 +275,12 @@ public class OmarMovement : MonoBehaviour
         if (collision.contactCount == 0)
             return;
 
-        // Un rebond libère les mains pour éviter que
-        // la corde et le rebond se contredisent.
         if (climbing)
             climbing.ReleaseForBounce();
 
         CancelVaultBoost();
 
-        Vector3 contactNormal =
-            collision.GetContact(0).normal;
+        Vector3 contactNormal = collision.GetContact(0).normal;
 
         rb.useGravity = true;
         rb.linearVelocity = Vector3.zero;

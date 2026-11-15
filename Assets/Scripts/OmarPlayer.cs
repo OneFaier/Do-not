@@ -142,9 +142,6 @@ public class OmarPlayer : MonoBehaviour
     private bool CanClimbSurface(ClimbableSurface surface)
     {
         SurfaceTypeSO type = GetSurfaceType(surface);
-
-        // Sans composant ou sans asset :
-        // comportement standard.
         return type == null || type.canClimb;
     }
 
@@ -229,8 +226,6 @@ public class OmarPlayer : MonoBehaviour
 
         if (isGripping)
         {
-            // Si la prise est détruite ou désactivée,
-            // la main ne doit pas rester suspendue dans le vide.
             if (handCollider == null
                 || !handCollider.enabled
                 || !handCollider.gameObject.activeInHierarchy)
@@ -260,8 +255,6 @@ public class OmarPlayer : MonoBehaviour
                         type);
                 }
 
-                // Cette limite s'ajoute à la stamina :
-                // la première limite atteinte libère la main.
                 if (type.useMaxGrabTime
                     && type.maxGrabTime > 0f
                     && grabDuration >= type.maxGrabTime)
@@ -288,7 +281,6 @@ public class OmarPlayer : MonoBehaviour
 
         if (grabNormal.y < -0.5f)
         {
-            // Plafond : glisse horizontalement vers le joueur.
             slideDirection = transform.position - grabPoint;
             slideDirection.y = 0f;
 
@@ -306,8 +298,6 @@ public class OmarPlayer : MonoBehaviour
         }
         else
         {
-            // Même comportement que le prototype :
-            // glissement vers le bas sur les murs.
             slideDirection = Vector3.down;
         }
 
@@ -321,7 +311,6 @@ public class OmarPlayer : MonoBehaviour
             nextGrabPoint + grabNormal * 0.3f,
             -grabNormal);
 
-        // Recherche uniquement sur le collider déjà tenu.
         if (handCollider.Raycast(
             slideRay,
             out RaycastHit slideHit,
@@ -330,9 +319,6 @@ public class OmarPlayer : MonoBehaviour
             grabPoint = slideHit.point;
             grabNormal = slideHit.normal;
         }
-
-        // Comme dans le prototype : si le point ne peut pas
-        // avancer sur la surface, il reste au dernier point valide.
     }
 
     private void ReleaseHand(int mouseButton)
@@ -365,8 +351,6 @@ public class OmarPlayer : MonoBehaviour
         handStamina.NotifyReleased(mouseButton);
     }
 
-    // Lâcher sans vault et sans coût de vault.
-    // Utilisé lors d'une collision avec une surface rebondissante.
     public void ReleaseForBounce()
     {
         ReleaseHand(0);
@@ -505,10 +489,8 @@ public class OmarPlayer : MonoBehaviour
 
         Vector3 currentVel = playerRb.linearVelocity;
 
-        // Gravité d'escalade inchangée.
         currentVel += Physics.gravity * Time.fixedDeltaTime;
 
-        // La surface modifie la vitesse du pull.
         if (Input.GetKey(KeyCode.LeftShift))
         {
             float effectivePullSpeed =
