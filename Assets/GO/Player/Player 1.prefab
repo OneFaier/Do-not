@@ -237,12 +237,17 @@ MonoBehaviour:
   rb: {fileID: 8061724874943820992}
   cameraTransform: {fileID: 5482071481093233847}
   moveSpeed: 6
-  jumpForce: 6
+  jumpForce: 8
+  groundAcceleration: 15
+  airControl: 7
+  gravityMultiplier: 1.5
   groundCheckDistance: 1.1
   groundCheckRadius: 0.2
-  coyoteTime: 0.2
+  coyoteTime: 0.35
   mouseSensitivity: 2
   maxPitch: 85
+  vaultBoostDuration: 2
+  bounceControlDelay: 0.25
 --- !u!114 &82332050762618211
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -263,16 +268,16 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 64
   handStamina: {fileID: 7076445185205579516}
-  grabRadius: 0.25
   maxReachDistance: 3.5
   pullSpeed: 2.25
   minRopeLength: 0.75
-  maxRopeLength: 4
-  grabCooldown: 0.1
-  leftHandCooldown: 0.5
-  rightHandCooldown: 0.5
+  maxRopeLength: 3.75
+  grabCooldown: 0
+  leftHandCooldown: 0
+  rightHandCooldown: 0
   swingForce: 12
-  vaultForce: 8
+  vaultForce: 10
+  vaultAngle: 55
   leftHandIdleOffset: {x: -0.4, y: -0.3, z: 0.8}
   rightHandIdleOffset: {x: 0.4, y: -0.3, z: 0.8}
 --- !u!54 &8061724874943820992
@@ -339,13 +344,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HandStamina
   leftHand:
     maxHoldTime: 8
-    regenDelay: 1
-    regenSpeed: 2
+    regenDelay: 0.8
+    regenSpeed: 2.5
     minimumGrabStamina: 1
   rightHand:
     maxHoldTime: 8
-    regenDelay: 1
-    regenSpeed: 2
+    regenDelay: 0.8
+    regenSpeed: 2.5
     minimumGrabStamina: 1
   vaultStaminaCost: 1
   leftHandRenderer: {fileID: 6367862978048195988}
