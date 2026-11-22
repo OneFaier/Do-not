@@ -269,7 +269,9 @@ MonoBehaviour:
     m_Bits: 64
   handStamina: {fileID: 7076445185205579516}
   maxReachDistance: 3.5
+  grabSnapRadius: 0.35
   pullSpeed: 2.25
+  maxClimbSpeed: 10
   minRopeLength: 0.75
   maxRopeLength: 3.75
   grabCooldown: 0

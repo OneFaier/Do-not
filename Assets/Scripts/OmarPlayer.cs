@@ -13,7 +13,9 @@ public class OmarPlayer : MonoBehaviour
 
     [Header("Réglages Escalade")]
     [SerializeField] private float maxReachDistance = 15f;
+    [SerializeField] private float grabSnapRadius = 0.35f;
     [SerializeField] private float pullSpeed = 8f;
+    [SerializeField] private float maxClimbSpeed = 15f;
     [SerializeField] private float minRopeLength = 0.5f;
     [SerializeField] private float maxRopeLength = 10f;
 
@@ -33,11 +35,8 @@ public class OmarPlayer : MonoBehaviour
     [SerializeField] private float vaultAngle = 35f;
 
     [Header("Positions au repos")]
-    [SerializeField] private Vector3 leftHandIdleOffset =
-        new Vector3(-0.4f, -0.3f, 0.8f);
-
-    [SerializeField] private Vector3 rightHandIdleOffset =
-        new Vector3(0.4f, -0.3f, 0.8f);
+    [SerializeField] private Vector3 leftHandIdleOffset = new Vector3(-0.4f, -0.3f, 0.8f);
+    [SerializeField] private Vector3 rightHandIdleOffset = new Vector3(0.4f, -0.3f, 0.8f);
 
     private OmarMovement movement;
 
@@ -65,65 +64,31 @@ public class OmarPlayer : MonoBehaviour
     private float leftCooldownTimer;
     private float rightCooldownTimer;
 
-    public bool IsClimbing =>
-        isLeftGripping || isRightGripping;
+    public bool IsClimbing => isLeftGripping || isRightGripping;
 
     private void Start()
     {
-        if (!mainCamera)
-            mainCamera = Camera.main;
-
-        if (!playerRb)
-            playerRb = GetComponent<Rigidbody>();
-
-        if (!handStamina)
-            handStamina = GetComponent<HandStamina>();
-
-        if (!handStamina)
-            handStamina = gameObject.AddComponent<HandStamina>();
+        if (!mainCamera) mainCamera = Camera.main;
+        if (!playerRb) playerRb = GetComponent<Rigidbody>();
+        if (!handStamina) handStamina = GetComponent<HandStamina>();
+        if (!handStamina) handStamina = gameObject.AddComponent<HandStamina>();
 
         movement = GetComponent<OmarMovement>();
     }
 
     private void Update()
     {
-        if (grabTimer > 0f)
-            grabTimer -= Time.deltaTime;
+        if (grabTimer > 0f) grabTimer -= Time.deltaTime;
+        if (leftCooldownTimer > 0f) leftCooldownTimer -= Time.deltaTime;
+        if (rightCooldownTimer > 0f) rightCooldownTimer -= Time.deltaTime;
 
-        if (leftCooldownTimer > 0f)
-            leftCooldownTimer -= Time.deltaTime;
+        handStamina.Tick(isLeftGripping, isRightGripping, Time.deltaTime);
 
-        if (rightCooldownTimer > 0f)
-            rightCooldownTimer -= Time.deltaTime;
+        if (isLeftGripping && handStamina.IsEmpty(0)) ReleaseHand(0);
+        if (isRightGripping && handStamina.IsEmpty(1)) ReleaseHand(1);
 
-        handStamina.Tick(
-            isLeftGripping,
-            isRightGripping,
-            Time.deltaTime);
-
-        if (isLeftGripping && handStamina.IsEmpty(0))
-            ReleaseHand(0);
-
-        if (isRightGripping && handStamina.IsEmpty(1))
-            ReleaseHand(1);
-
-        HandleGrabInput(
-            0,
-            ref isLeftGripping,
-            ref leftGrabPoint,
-            ref leftGrabNormal,
-            ref leftSurface,
-            ref leftCollider,
-            ref leftGrabDuration);
-
-        HandleGrabInput(
-            1,
-            ref isRightGripping,
-            ref rightGrabPoint,
-            ref rightGrabNormal,
-            ref rightSurface,
-            ref rightCollider,
-            ref rightGrabDuration);
+        HandleGrabInput(0, ref isLeftGripping, ref leftGrabPoint, ref leftGrabNormal, ref leftSurface, ref leftCollider, ref leftGrabDuration);
+        HandleGrabInput(1, ref isRightGripping, ref rightGrabPoint, ref rightGrabNormal, ref rightSurface, ref rightCollider, ref rightGrabDuration);
 
         HandleVaultInput();
         UpdateHandPositions();
@@ -145,6 +110,22 @@ public class OmarPlayer : MonoBehaviour
         return type == null || type.canClimb;
     }
 
+    private bool TryFindGrabTarget(out RaycastHit hit, out ClimbableSurface surface)
+    {
+        hit = default;
+        surface = null;
+        if (!mainCamera) return false;
+
+        Ray ray = mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+
+        if (!Physics.Raycast(ray, out hit, maxReachDistance, climbableLayer) &&
+            !Physics.SphereCast(ray, grabSnapRadius, out hit, maxReachDistance, climbableLayer))
+            return false;
+
+        surface = hit.collider.GetComponentInParent<ClimbableSurface>();
+        return CanClimbSurface(surface);
+    }
+
     private void HandleGrabInput(
         int mouseButton,
         ref bool isGripping,
@@ -154,81 +135,45 @@ public class OmarPlayer : MonoBehaviour
         ref Collider handCollider,
         ref float grabDuration)
     {
-        float specificCooldown = mouseButton == 0
-            ? leftCooldownTimer
-            : rightCooldownTimer;
+        float specificCooldown = mouseButton == 0 ? leftCooldownTimer : rightCooldownTimer;
 
         if (Input.GetMouseButtonDown(mouseButton)
             && grabTimer <= 0f
             && specificCooldown <= 0f
             && handStamina.CanGrab(mouseButton))
         {
-            Ray ray = mainCamera.ViewportPointToRay(
-                new Vector3(0.5f, 0.5f, 0f));
-
-            if (Physics.Raycast(
-                ray,
-                out RaycastHit hit,
-                maxReachDistance,
-                climbableLayer))
+            if (TryFindGrabTarget(out RaycastHit hit, out ClimbableSurface surface))
             {
-                ClimbableSurface surface =
-                    hit.collider.GetComponentInParent<ClimbableSurface>();
+                isGripping = true;
+                grabPoint = hit.point;
+                grabNormal = hit.normal;
+                handSurface = surface;
+                handCollider = hit.collider;
+                grabDuration = 0f;
 
-                if (CanClimbSurface(surface))
-                {
-                    isGripping = true;
+                if (movement) movement.NotifyGrabbed();
 
-                    grabPoint = hit.point;
-                    grabNormal = hit.normal;
+                float distToPoint = Vector3.Distance(transform.position, grabPoint);
 
-                    handSurface = surface;
-                    handCollider = hit.collider;
-                    grabDuration = 0f;
+                if ((mouseButton == 0 && isRightGripping) || (mouseButton == 1 && isLeftGripping))
+                    currentRopeLength = (currentRopeLength + distToPoint) / 2f;
+                else
+                    currentRopeLength = distToPoint;
 
-                    if (movement)
-                        movement.NotifyGrabbed();
+                currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
 
-                    float distToPoint = Vector3.Distance(
-                        transform.position,
-                        grabPoint);
+                playerRb.linearVelocity *= 0.3f;
+                grabTimer = grabCooldown;
 
-                    if ((mouseButton == 0 && isRightGripping)
-                        || (mouseButton == 1 && isLeftGripping))
-                    {
-                        currentRopeLength =
-                            (currentRopeLength + distToPoint) / 2f;
-                    }
-                    else
-                    {
-                        currentRopeLength = distToPoint;
-                    }
-
-                    currentRopeLength = Mathf.Clamp(
-                        currentRopeLength,
-                        minRopeLength,
-                        maxRopeLength);
-
-                    playerRb.linearVelocity *= 0.3f;
-                    grabTimer = grabCooldown;
-
-                    SurfaceTypeSO type = GetSurfaceType(surface);
-
-                    if (type != null && type.grabSound != null)
-                    {
-                        AudioSource.PlayClipAtPoint(
-                            type.grabSound,
-                            hit.point);
-                    }
-                }
+                SurfaceTypeSO type = GetSurfaceType(surface);
+                if (type != null && type.grabSound != null)
+                    AudioSource.PlayClipAtPoint(type.grabSound, hit.point);
             }
         }
 
         if (isGripping)
         {
-            if (handCollider == null
-                || !handCollider.enabled
-                || !handCollider.gameObject.activeInHierarchy)
+            if (handCollider == null || !handCollider.enabled || !handCollider.gameObject.activeInHierarchy)
             {
                 ReleaseHand(mouseButton);
                 return;
@@ -237,7 +182,6 @@ public class OmarPlayer : MonoBehaviour
             grabDuration += Time.deltaTime;
 
             SurfaceTypeSO type = GetSurfaceType(handSurface);
-
             if (type != null)
             {
                 if (!type.canClimb)
@@ -247,17 +191,9 @@ public class OmarPlayer : MonoBehaviour
                 }
 
                 if (type.isSlippery)
-                {
-                    SlideGrabPoint(
-                        ref grabPoint,
-                        ref grabNormal,
-                        handCollider,
-                        type);
-                }
+                    SlideGrabPoint(ref grabPoint, ref grabNormal, handCollider, type);
 
-                if (type.useMaxGrabTime
-                    && type.maxGrabTime > 0f
-                    && grabDuration >= type.maxGrabTime)
+                if (type.useMaxGrabTime && type.maxGrabTime > 0f && grabDuration >= type.maxGrabTime)
                 {
                     ReleaseHand(mouseButton);
                     return;
@@ -266,55 +202,25 @@ public class OmarPlayer : MonoBehaviour
         }
 
         if (Input.GetMouseButtonUp(mouseButton) && isGripping)
-        {
             ReleaseHand(mouseButton);
-        }
     }
 
-    private void SlideGrabPoint(
-        ref Vector3 grabPoint,
-        ref Vector3 grabNormal,
-        Collider handCollider,
-        SurfaceTypeSO type)
+    private void SlideGrabPoint(ref Vector3 grabPoint, ref Vector3 grabNormal, Collider handCollider, SurfaceTypeSO type)
     {
-        Vector3 slideDirection;
+        Vector3 slideDirection = grabNormal.y < -0.5f
+            ? (transform.position - grabPoint)
+            : Vector3.down;
 
         if (grabNormal.y < -0.5f)
         {
-            slideDirection = transform.position - grabPoint;
             slideDirection.y = 0f;
-
-            if (slideDirection.sqrMagnitude < 0.0001f)
-            {
-                slideDirection = Vector3.ProjectOnPlane(
-                    transform.forward,
-                    Vector3.up);
-            }
-
-            if (slideDirection.sqrMagnitude < 0.0001f)
-                slideDirection = Vector3.forward;
-
             slideDirection.Normalize();
         }
-        else
-        {
-            slideDirection = Vector3.down;
-        }
 
-        Vector3 nextGrabPoint =
-            grabPoint
-            + slideDirection
-            * Mathf.Max(0f, type.slideSpeed)
-            * Time.deltaTime;
+        Vector3 nextGrabPoint = grabPoint + slideDirection * type.slideSpeed * Time.deltaTime;
+        Ray slideRay = new Ray(nextGrabPoint + grabNormal * 0.3f, -grabNormal);
 
-        Ray slideRay = new Ray(
-            nextGrabPoint + grabNormal * 0.3f,
-            -grabNormal);
-
-        if (handCollider.Raycast(
-            slideRay,
-            out RaycastHit slideHit,
-            0.6f))
+        if (handCollider.Raycast(slideRay, out RaycastHit slideHit, 0.6f))
         {
             grabPoint = slideHit.point;
             grabNormal = slideHit.normal;
@@ -325,24 +231,18 @@ public class OmarPlayer : MonoBehaviour
     {
         if (mouseButton == 0)
         {
-            if (!isLeftGripping)
-                return;
-
+            if (!isLeftGripping) return;
             isLeftGripping = false;
             leftCooldownTimer = leftHandCooldown;
-
             leftSurface = null;
             leftCollider = null;
             leftGrabDuration = 0f;
         }
         else
         {
-            if (!isRightGripping)
-                return;
-
+            if (!isRightGripping) return;
             isRightGripping = false;
             rightCooldownTimer = rightHandCooldown;
-
             rightSurface = null;
             rightCollider = null;
             rightGrabDuration = 0f;
@@ -355,54 +255,27 @@ public class OmarPlayer : MonoBehaviour
     {
         ReleaseHand(0);
         ReleaseHand(1);
-
         playerRb.useGravity = true;
     }
 
     private void HandleVaultInput()
     {
-        if (!Input.GetButtonDown("Jump"))
-            return;
-
-        if (!IsClimbing)
-            return;
+        if (!Input.GetButtonDown("Jump") || !IsClimbing) return;
 
         handStamina.ConsumeVaultStamina();
-
         ReleaseHand(0);
         ReleaseHand(1);
 
-        Vector3 horizontalDirection = Vector3.ProjectOnPlane(
-            mainCamera.transform.forward,
-            Vector3.up);
+        Vector3 horizontalDirection = Vector3.ProjectOnPlane(mainCamera.transform.forward, Vector3.up).normalized;
+        float angleRadians = vaultAngle * Mathf.Deg2Rad;
 
-        if (horizontalDirection.sqrMagnitude < 0.0001f)
-        {
-            horizontalDirection = Vector3.ProjectOnPlane(
-                transform.forward,
-                Vector3.up);
-        }
-
-        if (horizontalDirection.sqrMagnitude < 0.0001f)
-            horizontalDirection = Vector3.forward;
-
-        horizontalDirection.Normalize();
-
-        float angleRadians =
-            Mathf.Clamp(vaultAngle, 0f, 90f) * Mathf.Deg2Rad;
-
-        Vector3 vaultDirection =
-            horizontalDirection * Mathf.Cos(angleRadians)
-            + Vector3.up * Mathf.Sin(angleRadians);
-
+        Vector3 vaultDirection = horizontalDirection * Mathf.Cos(angleRadians) + Vector3.up * Mathf.Sin(angleRadians);
         Vector3 impulse = vaultDirection * vaultForce;
 
         playerRb.useGravity = true;
 
         if (movement)
-        {
             movement.ApplyVaultImpulse(impulse);
-        }
         else
         {
             playerRb.linearVelocity = Vector3.zero;
@@ -412,28 +285,14 @@ public class OmarPlayer : MonoBehaviour
 
     private void UpdateHandPositions()
     {
-        Vector3 defaultLeft =
-            mainCamera.transform.TransformPoint(leftHandIdleOffset);
-
-        Vector3 defaultRight =
-            mainCamera.transform.TransformPoint(rightHandIdleOffset);
-
-        leftHand.position = isLeftGripping
-            ? leftGrabPoint
-            : defaultLeft;
-
-        rightHand.position = isRightGripping
-            ? rightGrabPoint
-            : defaultRight;
+        leftHand.position = isLeftGripping ? leftGrabPoint : mainCamera.transform.TransformPoint(leftHandIdleOffset);
+        rightHand.position = isRightGripping ? rightGrabPoint : mainCamera.transform.TransformPoint(rightHandIdleOffset);
     }
 
     private float GetHandGripMultiplier(ClimbableSurface surface)
     {
         SurfaceTypeSO type = GetSurfaceType(surface);
-
-        return type != null
-            ? Mathf.Max(0f, type.gripMultiplier)
-            : 1f;
+        return type != null ? type.gripMultiplier : 1f;
     }
 
     private float GetGripMultiplier()
@@ -441,17 +300,8 @@ public class OmarPlayer : MonoBehaviour
         float total = 0f;
         int count = 0;
 
-        if (isLeftGripping)
-        {
-            total += GetHandGripMultiplier(leftSurface);
-            count++;
-        }
-
-        if (isRightGripping)
-        {
-            total += GetHandGripMultiplier(rightSurface);
-            count++;
-        }
+        if (isLeftGripping) { total += GetHandGripMultiplier(leftSurface); count++; }
+        if (isRightGripping) { total += GetHandGripMultiplier(rightSurface); count++; }
 
         return count > 0 ? total / count : 1f;
     }
@@ -459,115 +309,68 @@ public class OmarPlayer : MonoBehaviour
     private void HandleClimbingPhysics()
     {
         playerRb.useGravity = !IsClimbing;
-
-        if (!IsClimbing)
-            return;
+        if (!IsClimbing) return;
 
         Vector3 centerOfGrip = Vector3.zero;
         int activeGrips = 0;
 
-        if (isLeftGripping)
-        {
-            centerOfGrip += leftGrabPoint;
-            activeGrips++;
-        }
-
-        if (isRightGripping)
-        {
-            centerOfGrip += rightGrabPoint;
-            activeGrips++;
-        }
-
+        if (isLeftGripping) { centerOfGrip += leftGrabPoint; activeGrips++; }
+        if (isRightGripping) { centerOfGrip += rightGrabPoint; activeGrips++; }
         centerOfGrip /= activeGrips;
 
-        float currentDist = Vector3.Distance(
-            transform.position,
-            centerOfGrip);
-
-        Vector3 dirToGrip =
-            (centerOfGrip - transform.position).normalized;
-
+        float currentDist = Vector3.Distance(transform.position, centerOfGrip);
+        Vector3 dirToGrip = (centerOfGrip - transform.position).normalized;
         Vector3 currentVel = playerRb.linearVelocity;
 
         currentVel += Physics.gravity * Time.fixedDeltaTime;
 
         if (Input.GetKey(KeyCode.LeftShift))
         {
-            float effectivePullSpeed =
-                pullSpeed * GetGripMultiplier();
-
-            currentRopeLength -=
-                effectivePullSpeed * Time.fixedDeltaTime;
+            float effectivePullSpeed = pullSpeed * GetGripMultiplier();
+            currentRopeLength -= effectivePullSpeed * Time.fixedDeltaTime;
 
             if (currentDist <= minRopeLength + 0.5f)
-            {
-                currentVel.y +=
-                    effectivePullSpeed * 2f * Time.fixedDeltaTime;
-            }
+                currentVel = Vector3.Lerp(currentVel, dirToGrip * effectivePullSpeed, 10f * Time.fixedDeltaTime);
         }
 
-        currentRopeLength = Mathf.Clamp(
-            currentRopeLength,
-            minRopeLength,
-            maxRopeLength);
+        currentRopeLength = Mathf.Clamp(currentRopeLength, minRopeLength, maxRopeLength);
 
         if (currentDist > currentRopeLength)
         {
             float stretch = currentDist - currentRopeLength;
+            currentVel += dirToGrip * (stretch * 50f * Time.fixedDeltaTime);
 
-            currentVel +=
-                dirToGrip * (stretch * 50f * Time.fixedDeltaTime);
-
-            float outwardSpeed = Vector3.Dot(
-                currentVel,
-                -dirToGrip);
-
+            float outwardSpeed = Vector3.Dot(currentVel, -dirToGrip);
             if (outwardSpeed > 0f)
                 currentVel += dirToGrip * outwardSpeed;
         }
 
-        Vector3 camForward = mainCamera.transform.forward;
-        camForward.y = 0f;
-        camForward.Normalize();
+        Vector3 camForward = Vector3.ProjectOnPlane(mainCamera.transform.forward, Vector3.up).normalized;
+        Vector3 camRight = Vector3.ProjectOnPlane(mainCamera.transform.right, Vector3.up).normalized;
 
-        Vector3 camRight = mainCamera.transform.right;
-        camRight.y = 0f;
-        camRight.Normalize();
-
-        float moveX = Input.GetAxis("Horizontal");
-        float moveZ = Input.GetAxis("Vertical");
-
-        Vector3 swingDir =
-            (camRight * moveX + camForward * moveZ).normalized;
-
-        currentVel +=
-            swingDir * (swingForce * Time.fixedDeltaTime);
-
+        Vector3 swingDir = (camRight * Input.GetAxis("Horizontal") + camForward * Input.GetAxis("Vertical")).normalized;
+        currentVel += swingDir * (swingForce * Time.fixedDeltaTime);
         currentVel *= 0.98f;
+        currentVel = Vector3.ClampMagnitude(currentVel, maxClimbSpeed);
 
         playerRb.linearVelocity = currentVel;
     }
 
     public bool HasGrabbableTarget()
     {
-        if (!mainCamera)
-            return false;
+        return TryFindGrabTarget(out _, out _);
+    }
 
-        Ray ray = mainCamera.ViewportPointToRay(
-            new Vector3(0.5f, 0.5f, 0f));
+    private void OnDrawGizmosSelected()
+    {
+        Camera cam = mainCamera ? mainCamera : Camera.main;
+        if (!cam) return;
 
-        if (!Physics.Raycast(
-            ray,
-            out RaycastHit hit,
-            maxReachDistance,
-            climbableLayer))
-        {
-            return false;
-        }
+        Vector3 end = cam.transform.position + cam.transform.forward * maxReachDistance;
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawLine(cam.transform.position, end);
 
-        ClimbableSurface surface =
-            hit.collider.GetComponentInParent<ClimbableSurface>();
-
-        return CanClimbSurface(surface);
+        Gizmos.color = Color.green;
+        Gizmos.DrawWireSphere(end, grabSnapRadius);
     }
 }
