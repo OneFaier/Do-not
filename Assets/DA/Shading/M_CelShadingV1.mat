@@ -72,7 +72,7 @@ Material:
     - _BUILTIN_QueueOffset: 0
     - _QueueControl: 0
     - _QueueOffset: 0
-    - _Shades: 0.24
+    - _Shades: 0.32
     - _max: 1.05
     - _min: -0.5
     m_Colors:
